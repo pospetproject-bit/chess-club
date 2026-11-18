@@ -39,7 +39,7 @@ async function handleMessage(msg) {
         chat_id: chatId,
         text: `⚔️ <b>Вас пригласили в партию!</b>\nКомната: <code>${code}</code>\n\nОткройте приложение и присоединяйтесь — соперник уже ждёт.`,
         parse_mode: 'HTML',
-        reply_markup: playKeyboard(param),
+        reply_markup: playKeyboard(code),
       });
     } else {
       await tgApi('sendMessage', { chat_id: chatId, text: WELCOME, parse_mode: 'HTML', reply_markup: playKeyboard() });
