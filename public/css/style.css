@@ -135,6 +135,59 @@ h3 { font-size: 16px; margin: 0 0 8px; }
 .board[data-theme="midnight"] .coord { color: #aab4d4; }
 .board[data-theme="sakura"] { --sq-light:#fbe9ec; --sq-dark:#d98a9c; }
 
+/* ── Фирменные эффекты премиум-досок ── */
+.trail-layer { position: absolute; inset: 0; z-index: 3; pointer-events: none; }
+.fx-layer { position: absolute; inset: 0; z-index: 7; pointer-events: none; overflow: hidden; }
+
+/* Изумруд: светящийся след хода */
+.trail-cell { position: absolute; width: 12.5%; height: 12.5%; border-radius: 5px; opacity: 0; animation: trailPulse 1s ease forwards; }
+.board[data-theme="emerald"] .trail-cell {
+  background: radial-gradient(circle, rgba(150,255,205,.95) 0%, rgba(46,204,113,.55) 70%, transparent 100%);
+  box-shadow: 0 0 16px 5px rgba(90,255,180,.7), inset 0 0 10px rgba(255,255,255,.55);
+}
+@keyframes trailPulse {
+  0% { opacity: 0; transform: scale(.55); }
+  22% { opacity: 1; transform: scale(1); }
+  60% { opacity: .8; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.06); }
+}
+.board[data-theme="emerald"] .sq.last::after { background: rgba(130,255,195,.4); box-shadow: inset 0 0 12px rgba(90,255,180,.6); }
+
+/* Мрамор: каменные прожилки + золотая инкрустация хода */
+.board[data-theme="marble"] .sq::before {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background-image:
+    repeating-linear-gradient(115deg, transparent 0 13px, rgba(255,255,255,.12) 13px 14px, transparent 14px 29px),
+    repeating-linear-gradient(63deg, transparent 0 21px, rgba(40,45,55,.10) 21px 22px, transparent 22px 43px);
+}
+.board[data-theme="marble"] .sq.last::after {
+  background: rgba(212,175,55,.32);
+  box-shadow: inset 0 0 0 2px rgba(212,175,55,.9), inset 0 0 12px rgba(212,175,55,.45);
+}
+
+/* Полночь: мерцающие звёзды + лунная подсветка хода */
+.star { position: absolute; border-radius: 50%; background: #fff; box-shadow: 0 0 6px 1px rgba(180,200,255,.9); animation: twinkle ease-in-out infinite; }
+@keyframes twinkle { 0%,100% { opacity: .12; transform: scale(.6); } 50% { opacity: 1; transform: scale(1.25); } }
+.board[data-theme="midnight"] .sq.last::after {
+  background: radial-gradient(circle, rgba(160,190,255,.5) 0%, rgba(120,150,255,.15) 75%);
+  box-shadow: inset 0 0 14px rgba(160,190,255,.55);
+}
+
+/* Сакура: падающие лепестки + нежное кольцо хода */
+.petal {
+  position: absolute; top: -8%; width: 11px; height: 11px; opacity: 0;
+  background: radial-gradient(circle at 30% 30%, #ffe1ea, #f7a8bd 75%);
+  border-radius: 62% 0 62% 0; animation: petalFall linear infinite;
+}
+@keyframes petalFall {
+  0% { top: -8%; transform: translateX(0) rotate(0deg); opacity: 0; }
+  8% { opacity: .9; }
+  50% { transform: translateX(var(--sway, 30px)) rotate(180deg); }
+  92% { opacity: .9; }
+  100% { top: 108%; transform: translateX(0) rotate(360deg); opacity: 0; }
+}
+.board[data-theme="sakura"] .sq.last::after { background: rgba(255,150,180,.35); box-shadow: inset 0 0 0 3px rgba(255,120,160,.75); }
+
 /* ---------- игровой экран ---------- */
 .game-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; gap: 8px; }
 .player-bar { display: flex; align-items: center; gap: 9px; padding: 7px 10px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; margin: 7px 0; min-height: 48px; }

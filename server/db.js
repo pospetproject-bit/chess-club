@@ -24,6 +24,12 @@ export async function initDb() {
     try { db = JSON.parse(fs.readFileSync(FILE, 'utf8')); } catch {}
     console.log('[db] JSON-файл (локальный режим)');
   }
+  // миграция переименованных наборов фигур: gold→ivory, space→crystal
+  for (const u of Object.values(db.users || {})) {
+    if (Array.isArray(u.owned)) {
+      u.owned = u.owned.map(g => g === 'pieces:gold' ? 'pieces:ivory' : g === 'pieces:space' ? 'pieces:crystal' : g);
+    }
+  }
 }
 
 let saveTimer = null;

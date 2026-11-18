@@ -2,7 +2,7 @@
 import { Chess } from '../vendor/chess.js';
 import { BoardView } from './board.js';
 import { el, esc, toast, modal, store } from './util.js';
-import { has, purchase } from './api.js';
+import { has, purchase, priceOf } from './api.js';
 import { sound } from './sound.js';
 import { kingSquare } from './game-ui.js';
 
@@ -38,7 +38,7 @@ export function renderPuzzles() {
   if (!has('puzzles:all')) {
     const banner = el('div', 'card');
     banner.innerHTML = `<p class="muted" style="line-height:1.5">Откройте все ${PUZZLES.length} задач (мат в 1–2 хода, вилки, связки, сквозные удары) — или решайте по одной бесплатной задаче каждый день.</p>
-      <button class="btn primary block" id="pz-unlock">Открыть все задачи — 99 ⭐</button>`;
+      <button class="btn primary block" id="pz-unlock">Открыть все задачи — ${priceOf('puzzles_pack')} ⭐</button>`;
     banner.querySelector('#pz-unlock').onclick = async () => { if (await purchase('puzzles_pack')) renderPuzzles(); };
     root.appendChild(banner);
   }
@@ -139,7 +139,7 @@ export function startPuzzle(puzzle, isDaily = false) {
       const m = modal(`<div class="result-emoji">🎉</div><div class="result-title">Задача решена!</div>
         <div class="result-sub">${esc(puzzle.title)}${usedHint ? ' · с подсказкой' : ' · без подсказок 💪'}${isDaily ? ` · стрик 🔥 ${streak().count}` : ''}</div>
         <div style="display:flex;flex-direction:column;gap:8px">
-          ${has('puzzles:all') ? '<button class="btn green block" data-a="next">Следующая задача →</button>' : '<button class="btn primary block" data-a="unlock">Открыть все задачи — 99 ⭐</button>'}
+          ${has('puzzles:all') ? '<button class="btn green block" data-a="next">Следующая задача →</button>' : `<button class="btn primary block" data-a="unlock">Открыть все задачи — ${priceOf('puzzles_pack')} ⭐</button>`}
           <button class="btn block" data-a="list">К списку задач</button>
         </div>`);
       m.root.querySelector('[data-a=list]').onclick = () => { m.close(); window.__cc_nav('puzzles'); };

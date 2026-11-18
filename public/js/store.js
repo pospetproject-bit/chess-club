@@ -88,7 +88,7 @@ export function renderStore() {
   // --- анализ и подсказки ---
   const s1 = section('📊 Разбор партий и подсказки', `Сейчас у вас: разборов — ${me?.analysis_credits ?? 0}, подсказок — ${me?.hints ?? 0}`);
   wideCard(s1, { ico: '🔍', title: 'Разбор 1 партии', desc: 'График оценки, точность сторон, зевки и лучшие ходы.', product: 'analysis_1' });
-  wideCard(s1, { ico: '📦', title: '10 разборов', desc: 'Пакет со скидкой 40% — для тех, кто растёт всерьёз.', product: 'analysis_10', extra: '<span class="badge green">выгодно</span>' });
+  wideCard(s1, { ico: '📦', title: '10 разборов', desc: 'Пакет со скидкой 48% — для тех, кто растёт всерьёз.', product: 'analysis_10', extra: '<span class="badge green">выгодно</span>' });
   wideCard(s1, { ico: '💡', title: '20 подсказок', desc: 'Лучший ход стрелкой в партии с ботом. +1 бесплатно за просмотр рекламы.', product: 'hints_20' });
 
   // --- обучение ---
@@ -96,7 +96,7 @@ export function renderStore() {
   wideCard(s2, { ico: '🚀', title: 'Курс «Дебюты»', desc: 'Итальянская, сицилианская, ферзевый гамбит — ход за ходом.', product: 'lessons_openings', ownedKey: 'lessons:openings' });
   wideCard(s2, { ico: '⚡', title: 'Курс «Тактика»', desc: 'Вилки, связки, сквозные удары, матовые конструкции.', product: 'lessons_tactics', ownedKey: 'lessons:tactics' });
   wideCard(s2, { ico: '👑', title: 'Курс «Эндшпиль»', desc: 'Правило квадрата, маты ферзём и ладьёй.', product: 'lessons_endgame', ownedKey: 'lessons:endgame' });
-  wideCard(s2, { ico: '🎁', title: 'Все курсы', desc: 'Три курса одним пакетом со скидкой.', product: 'lessons_all', ownedKey: 'lessons:openings', extra: '<span class="badge green">−22%</span>' });
+  wideCard(s2, { ico: '🎁', title: 'Все курсы', desc: 'Три курса одним пакетом со скидкой.', product: 'lessons_all', ownedKey: 'lessons:openings', extra: '<span class="badge green">−16%</span>' });
   wideCard(s2, { ico: '🧩', title: 'Тактика+ (12 задач)', desc: 'Вся библиотека задач. Задача дня — всегда бесплатно.', product: 'puzzles_pack', ownedKey: 'puzzles:all' });
 
   // --- доски ---
@@ -117,7 +117,7 @@ export function renderStore() {
   s3.appendChild(g3);
   const packB = el('div', 'card');
   packB.style.cssText = 'display:flex;align-items:center;gap:12px;margin-top:10px';
-  packB.innerHTML = `<div style="flex:1"><h3 style="margin:0">🎁 Все премиум-доски</h3><p class="muted">4 доски со скидкой 33%</p></div>`;
+  packB.innerHTML = `<div style="flex:1"><h3 style="margin:0">🎁 Все премиум-доски</h3><p class="muted">4 доски со скидкой 29%</p></div>`;
   const pbWrap = el('div'); pbWrap.style.minWidth = '110px';
   pbWrap.appendChild(buyBtn('boards_pack', 'board:emerald'));
   packB.appendChild(pbWrap);
@@ -141,7 +141,7 @@ export function renderStore() {
   s4.appendChild(g4);
   const packP = el('div', 'card');
   packP.style.cssText = 'display:flex;align-items:center;gap:12px;margin-top:10px';
-  packP.innerHTML = `<div style="flex:1"><h3 style="margin:0">🎁 Все премиум-фигуры</h3><p class="muted">3 набора со скидкой 16%</p></div>`;
+  packP.innerHTML = `<div style="flex:1"><h3 style="margin:0">🎁 Все премиум-фигуры</h3><p class="muted">3 набора со скидкой 18%</p></div>`;
   const ppWrap = el('div'); ppWrap.style.minWidth = '110px';
   ppWrap.appendChild(buyBtn('pieces_pack', 'pieces:neon'));
   packP.appendChild(ppWrap);

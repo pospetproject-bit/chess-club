@@ -4,7 +4,7 @@ import { Chess } from '../vendor/chess.js';
 import { BoardView } from './board.js';
 import { askAnalysis } from './ai.js';
 import { el, esc, toast, modal, store } from './util.js';
-import { state, has, isPremium, api, purchase } from './api.js';
+import { state, has, isPremium, api, purchase, priceOf } from './api.js';
 import { sound } from './sound.js';
 
 const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
@@ -54,8 +54,8 @@ function offerAnalysisPurchase(ctx) {
   const m = modal(`<h3>📊 Разбор партии</h3>
     <p class="muted" style="line-height:1.6">Движок разберёт каждый ход: график оценки, точность обеих сторон, зевки и ошибки, лучшие ходы со стрелками.</p>
     <div style="display:flex;flex-direction:column;gap:8px;margin-top:12px">
-      <button class="btn block" data-a="one">Разобрать эту партию — 25 ⭐</button>
-      <button class="btn block" data-a="ten">Пакет 10 разборов — 149 ⭐ <span class="badge green">−40%</span></button>
+      <button class="btn block" data-a="one">Разобрать эту партию — ${priceOf('analysis_1')} ⭐</button>
+      <button class="btn block" data-a="ten">Пакет 10 разборов — ${priceOf('analysis_10')} ⭐ <span class="badge green">−48%</span></button>
       <button class="btn primary block" data-a="premium">♛ Премиум — безлимитный разбор</button>
     </div>`);
   const go = async id => {

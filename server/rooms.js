@@ -183,7 +183,7 @@ export class RoomManager {
       // forfeit при долгом дисконнекте
       for (const c of ['w', 'b']) {
         const p = room.players[c];
-        if (p?.disconnectedAt && now - p.disconnectedAt > 60000) {
+        if (p?.disconnectedAt && now - p.disconnectedAt > 180000) {
           this.end(room, c === 'w' ? 'b' : 'w', 'abandon');
         }
       }
@@ -200,7 +200,7 @@ export class RoomManager {
     if (room.status === 'waiting' || explicit && room.status !== 'active') { this.rooms.delete(room.code); return; }
     if (room.status === 'active') {
       p.disconnectedAt = Date.now();
-      this.broadcast(room, { t: 'opponent_disconnected', grace: 60 });
+      this.broadcast(room, { t: 'opponent_disconnected', grace: 180 });
     }
     if (explicit) ws.roomCode = null;
   }

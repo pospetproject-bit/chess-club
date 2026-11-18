@@ -272,7 +272,8 @@ class FriendGame {
     let left = grace;
     const upd = () => {
       this.ui.status.className = 'status-line check';
-      this.ui.status.textContent = `Соперник отключился. Ждём переподключения: ${left} с…`;
+      const mm = Math.floor(left / 60), ss = String(left % 60).padStart(2, '0');
+      this.ui.status.textContent = `Соперник отключился. Ждём переподключения: ${mm}:${ss}…`;
     };
     upd();
     this.disconnTimer = setInterval(() => { if (--left <= 0) clearInterval(this.disconnTimer); else upd(); }, 1000);
@@ -324,7 +325,7 @@ class FriendGame {
 
   async exit() {
     if (this.st?.status === 'active') {
-      const ok = await confirmModal('Выйти из партии?', 'У вас будет 60 секунд на возвращение, иначе засчитается поражение.', 'Выйти');
+      const ok = await confirmModal('Выйти из партии?', 'У вас будет 3 минуты на возвращение, иначе засчитается поражение.', 'Выйти');
       if (!ok) return;
     }
     this.conn.close();

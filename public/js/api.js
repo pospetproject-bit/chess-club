@@ -47,6 +47,7 @@ export function has(key) {
 }
 export const isPremium = () => !!state.me?.premium;
 export const noAds = () => has('no_ads');
+export const priceOf = id => state.config?.catalog.find(p => p.id === id)?.stars ?? '?';
 
 // Покупка: в Telegram — реальный Stars-инвойс, в демо — тестовое подтверждение.
 export async function purchase(productId) {

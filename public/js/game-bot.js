@@ -5,7 +5,7 @@ import { renderGameShell, setPlayerBar, setMoveList, capturedFromFen, kingSquare
 import { askMove, askHint } from './ai.js';
 import { sound } from './sound.js';
 import { store, toast, modal, confirmModal, el, esc } from './util.js';
-import { state, has, isPremium, api, purchase, myName, refreshMe } from './api.js';
+import { state, has, isPremium, api, purchase, myName, refreshMe, priceOf } from './api.js';
 import { haptic, showRewarded } from './tg.js';
 import { maybeShowAd, gameResultModal } from './flow.js';
 
@@ -207,7 +207,7 @@ class BotGame {
       <p class="muted" style="line-height:1.5">Подсказка показывает лучший ход стрелкой. Получите ещё:</p>
       <div style="display:flex;flex-direction:column;gap:8px;margin-top:12px">
         <button class="btn green block" data-a="ad">🎬 Посмотреть рекламу → +1 подсказка</button>
-        <button class="btn block" data-a="buy">Купить 20 подсказок — 49 ⭐</button>
+        <button class="btn block" data-a="buy">Купить 20 подсказок — ${priceOf('hints_20')} ⭐</button>
         <button class="btn primary block" data-a="premium">♛ Премиум — безлимитные подсказки</button>
       </div>`);
     m.root.querySelector('[data-a=ad]').onclick = async () => {

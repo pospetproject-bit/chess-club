@@ -43,14 +43,17 @@ export class BoardView {
     this.board = el('div', 'board');
     this.board.dataset.theme = this.theme;
     this.squaresEl = el('div', 'squares');
+    this.trailEl = el('div', 'trail-layer');
     this.piecesEl = el('div', 'pieces-layer');
     this.arrowsEl = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     this.arrowsEl.setAttribute('class', 'arrows-layer');
     this.arrowsEl.setAttribute('viewBox', '0 0 800 800');
-    this.board.append(this.squaresEl, this.piecesEl, this.arrowsEl);
+    this.fxEl = el('div', 'fx-layer');
+    this.board.append(this.squaresEl, this.trailEl, this.piecesEl, this.arrowsEl, this.fxEl);
     this.outer.appendChild(this.board);
     container.appendChild(this.outer);
     this._buildSquares();
+    this._applyThemeFx();
     this._bind();
   }
 
@@ -105,6 +108,7 @@ export class BoardView {
   _tryAnimate(lm, target) {
     const from = this._map[lm.from], to = this._map[lm.to];
     if (!from) return false;
+    this._spawnTrail(lm.from, lm.to, from.t);
     // взятие (в т.ч. en passant)
     if (to) to.node.remove();
     if (from.t === 'p' && lm.from[0] !== lm.to[0] && !to) {
@@ -278,7 +282,68 @@ export class BoardView {
     if (this.fen) this._rebuild(parseFenPieces(this.fen));
     this._refreshHL();
   }
-  setTheme(theme) { this.theme = theme; this.board.dataset.theme = theme; }
+  setTheme(theme) { this.theme = theme; this.board.dataset.theme = theme; this._applyThemeFx(); }
   setSet(set) { this.set = set; if (this.fen) this._rebuild(parseFenPieces(this.fen)); }
+
+  // ── Фирменные эффекты премиум-досок ──────────────────────
+  // Сакура — падающие лепестки; Полночь — мерцающие звёзды.
+  _applyThemeFx() {
+    if (!this.fxEl) return;
+    this.fxEl.innerHTML = '';
+    if (this.theme === 'sakura') {
+      for (let i = 0; i < 8; i++) {
+        const p = el('div', 'petal');
+        p.style.left = (Math.random() * 100) + '%';
+        p.style.animationDuration = (6 + Math.random() * 5) + 's';
+        p.style.animationDelay = (-Math.random() * 8) + 's';
+        p.style.setProperty('--sway', (20 + Math.random() * 40) + 'px');
+        p.style.setProperty('--spin', (Math.random() * 360) + 'deg');
+        this.fxEl.appendChild(p);
+      }
+    } else if (this.theme === 'midnight') {
+      for (let i = 0; i < 16; i++) {
+        const s = el('div', 'star');
+        s.style.left = (Math.random() * 96 + 2) + '%';
+        s.style.top = (Math.random() * 96 + 2) + '%';
+        s.style.animationDuration = (2 + Math.random() * 3) + 's';
+        s.style.animationDelay = (-Math.random() * 4) + 's';
+        const sz = (1.5 + Math.random() * 2.5) + 'px';
+        s.style.width = sz; s.style.height = sz;
+        this.fxEl.appendChild(s);
+      }
+    }
+  }
+
+  // Изумруд — светящийся след хода (путь фигуры, включая «Г» коня).
+  _trailPath(fromSq, toSq, type) {
+    const f = FILES.indexOf(fromSq[0]), r = Number(fromSq[1]);
+    const tf = FILES.indexOf(toSq[0]), tr = Number(toSq[1]);
+    const cells = [fromSq];
+    if (type === 'n') {
+      cells.push(FILES[f] + tr); // угол буквы «Г»
+    } else if (type !== 'k' && type !== 'p') {
+      const df = Math.sign(tf - f), dr = Math.sign(tr - r);
+      let cf = f + df, cr = r + dr;
+      while (cf !== tf || cr !== tr) { cells.push(FILES[cf] + cr); cf += df; cr += dr; }
+    }
+    cells.push(toSq);
+    return [...new Set(cells)];
+  }
+  _spawnTrail(fromSq, toSq, type) {
+    if (this.theme !== 'emerald' || !this.trailEl) return;
+    clearTimeout(this._trailTimer);
+    this.trailEl.innerHTML = '';
+    const cells = this._trailPath(fromSq, toSq, type);
+    cells.forEach((sq, i) => {
+      const { x, y } = sqToXY(sq, this.orientation);
+      const c = el('div', 'trail-cell');
+      c.style.left = (x * 12.5) + '%';
+      c.style.top = (y * 12.5) + '%';
+      c.style.animationDelay = (i * 70) + 'ms';
+      this.trailEl.appendChild(c);
+    });
+    this._trailTimer = setTimeout(() => { this.trailEl.innerHTML = ''; }, cells.length * 70 + 1000);
+  }
+
   shake() { this.board.classList.remove('board-shake'); void this.board.offsetWidth; this.board.classList.add('board-shake'); }
 }
