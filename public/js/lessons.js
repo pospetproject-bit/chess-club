@@ -3,11 +3,12 @@
 import { Chess } from '../vendor/chess.js';
 import { BoardView } from './board.js';
 import { el, esc, toast, modal, store } from './util.js';
-import { has, purchase, isPremium } from './api.js';
+import { has, purchase, isPremium, api } from './api.js';
 import { sound } from './sound.js';
 import { kingSquare } from './game-ui.js';
 
 import { PACKS, LESSONS } from './data-lessons.js';
+import { announceAchievements } from './achievements.js';
 export { PACKS, LESSONS };
 
 const done = () => store.get('lessons_done', []);
@@ -145,6 +146,7 @@ export function startLesson(lesson) {
   function complete() {
     const d = done();
     if (!d.includes(lesson.id)) { d.push(lesson.id); store.set('lessons_done', d); }
+    api.lessonDone(lesson.id).then(r => announceAchievements(r.new_achievements)).catch(() => {});
     sound.end(true);
     const packLessons = LESSONS.filter(l => l.pack === lesson.pack);
     const next = packLessons[packLessons.findIndex(l => l.id === lesson.id) + 1];

@@ -99,6 +99,33 @@ ok(new Set(CATALOG.map(p => p.id)).size === CATALOG.length, 'id товаров �
 ok(CATALOG.filter(p => p.type === 'premium').length === 1, 'ровно один премиум-продукт');
 ok(PREMIUM_GRANTS.includes('no_ads'), 'премиум отключает рекламу');
 
+console.log('— Рейтинг и достижения —');
+{
+  const { delta, expected } = await import('../server/rating.js');
+  const { ACHIEVEMENTS } = await import('../server/achievements.js');
+  const dbm = await import('../server/db.js');
+  ok(Math.abs(expected(1200, 1200) - 0.5) < 1e-9, 'Elo: равные рейтинги → ожидание 0.5');
+  ok(delta(1200, 1200, 1, 32) === 16, 'Elo: победа над равным +16 (K=32)');
+  ok(delta(1200, 1200, 0, 32) === -16, 'Elo: поражение над равным −16');
+  ok(delta(1200, 1200, 0.5, 32) === 0, 'Elo: ничья над равным 0');
+  ok(delta(1200, 1600, 1, 32) > 16, 'Elo: победа над сильным даёт больше очков');
+  const u1 = dbm.getUser('t1', 'A'), u2 = dbm.getUser('t2', 'B');
+  const g1 = dbm.saveGame(u1, { mode: 'friend', result: 'w', player_color: 'w', pgn: '1.e4', rated: true, rating_delta: 16, opponent: { id: 't2', name: 'B' } });
+  const g2 = dbm.saveGame(u2, { mode: 'friend', result: 'w', player_color: 'b', pgn: '1.e4', rated: true, rating_delta: -16, opponent: { id: 't1', name: 'A' } });
+  ok(g1.rating_delta === 16 && u1.rating === 1216, 'рейтинг применяется к победителю');
+  ok(u2.rating === 1184, 'рейтинг списывается у проигравшего');
+  ok(g1.new_achievements.some(a => a.id === 'first_win'), 'ачивка «Первая победа» выдана');
+  ok(g1.new_achievements.some(a => a.id === 'friend_win'), 'ачивка «Дружеский счёт» выдана');
+  ok(u1.opponents['t2'] && u2.opponents['t1'], 'оппоненты записаны (для вкладки Друзья)');
+  const lb = dbm.leaderboard('all', u1);
+  ok(lb.rows[0].id === 't1' && lb.rows[0].rating === 1216, 'лидерборд: лидер первый');
+  const lbf = dbm.leaderboard('friends', u2);
+  ok(lbf.rows.some(r => r.id === 't1'), 'вкладка Друзья содержит оппонента');
+  ok(new Set(ACHIEVEMENTS.map(a => a.id)).size === ACHIEVEMENTS.length, 'id достижений уникальны');
+  const casual = dbm.saveGame(u1, { mode: 'bot', result: 'w', player_color: 'w', pgn: '1.e4', rated: false });
+  ok(casual.rating_delta === 0 && u1.rating === 1216, 'нерейтинговая партия не меняет рейтинг');
+}
+
 // ---------- сервер ----------
 console.log('— Сервер: API + WebSocket —');
 // чистое состояние БД для детерминированных тестов (персистентность — фича, не баг)

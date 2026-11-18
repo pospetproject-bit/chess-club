@@ -4,7 +4,7 @@ import { BoardView } from './board.js';
 import { renderGameShell, setPlayerBar, setMoveList, capturedFromFen, kingSquare } from './game-ui.js';
 import { askMove, askHint } from './ai.js';
 import { sound } from './sound.js';
-import { store, toast, modal, confirmModal, el, esc } from './util.js';
+import { store, toast, modal, confirmModal, el, esc, fmtClock } from './util.js';
 import { state, has, isPremium, api, purchase, myName, refreshMe, priceOf } from './api.js';
 import { haptic, showRewarded } from './tg.js';
 import { maybeShowAd, gameResultModal } from './flow.js';
@@ -15,6 +15,9 @@ export const BOT_LEVELS = {
   hard: { name: 'Профессор Грок', avatar: '🦾', sub: 'сложный · считает глубоко' },
 };
 
+export const TC_OPTIONS = [['none', 'Без часов'], ['3+2', '3 мин + 2 с'], ['5+0', '5 мин'], ['10+0', '10 мин']];
+const TC = { none: null, '3+2': { base: 180000, inc: 2000 }, '5+0': { base: 300000, inc: 0 }, '10+0': { base: 600000, inc: 0 } };
+
 let current = null;
 
 export function hasSavedBotGame() {
@@ -22,33 +25,66 @@ export function hasSavedBotGame() {
   return s && s.moves?.length > 0 && !s.over;
 }
 
-export function startBotGame({ level, color, resume = false } = {}) {
+export function startBotGame({ level, color, resume = false, tc = 'none', rated = true } = {}) {
   if (current) current.destroy();
-  current = new BotGame({ level, color, resume });
+  current = new BotGame({ level, color, resume, tc, rated });
   return current;
 }
 
 class BotGame {
-  constructor({ level, color, resume }) {
+  constructor({ level, color, resume, tc, rated }) {
     const saved = resume ? store.get('bot_game') : null;
     this.level = saved?.level || level || 'medium';
     this.color = saved?.color || (color === 'random' ? (Math.random() < 0.5 ? 'w' : 'b') : color) || 'w';
+    this.tcName = saved?.tc || tc || 'none';
+    this.tc = TC[this.tcName] || null;
+    this.rated = saved?.rated ?? rated ?? true;
+    this.hintsUsed = saved?.hintsUsed || 0;
     this.chess = new Chess();
     this.over = false; this.thinking = false; this.hintArrow = null;
     this.gameServerId = null;
     if (saved) for (const uci of saved.moves) {
       try { this.chess.move({ from: uci.slice(0, 2), to: uci.slice(2, 4), promotion: uci[4] || 'q' }); } catch {}
     }
+    // часы
+    this.clocks = this.tc ? (saved?.clocks || { w: this.tc.base, b: this.tc.base }) : null;
+    this.turnStart = Date.now();
+    this.clockTimer = this.tc ? setInterval(() => this.tick(), 250) : null;
     this.buildUI();
     this.update(true);
     if (!this.over && this.chess.turn() !== this.color) this.botTurn();
+  }
+
+  tick() {
+    if (this.over || !this.clocks) return;
+    const turn = this.chess.turn();
+    const left = this.clocks[turn] - (Date.now() - this.turnStart);
+    if (left <= 0) { this.finish(turn === 'w' ? 'b' : 'w', 'время'); return; }
+    this.paintClocks();
+  }
+  clockLeft(c) {
+    if (!this.clocks) return null;
+    return this.clocks[c] - (this.chess.turn() === c && !this.over ? Date.now() - this.turnStart : 0);
+  }
+  paintClocks() {
+    const myC = this.color, botC = myC === 'w' ? 'b' : 'w';
+    for (const [bar, c] of [[this.ui.barTop, botC], [this.ui.barBottom, myC]]) {
+      const cEl = bar?.querySelector('.clock');
+      if (cEl) { const v = this.clockLeft(c); cEl.textContent = fmtClock(v); cEl.classList.toggle('low', v < 30000); }
+    }
+  }
+  clockMove(c) {
+    if (!this.clocks) return;
+    this.clocks[c] -= Date.now() - this.turnStart;
+    this.clocks[c] += this.tc.inc;
+    this.turnStart = Date.now();
   }
 
   buildUI() {
     const bot = BOT_LEVELS[this.level];
     const root = document.getElementById('game-root');
     this.ui = renderGameShell(root, {
-      title: `С ботом · ${this.level === 'easy' ? 'лёгкий' : this.level === 'medium' ? 'средний' : 'сложный'}`,
+      title: `С ботом · ${this.level === 'easy' ? 'лёгкий' : this.level === 'medium' ? 'средний' : 'сложный'}${this.rated ? ' · рейтинг' : ''}`,
       onBack: () => this.exit(),
       controls: [
         { id: 'hint', label: '💡 Подсказка', onClick: () => this.hint() },
@@ -93,11 +129,13 @@ class BotGame {
     setPlayerBar(this.ui.barTop, {
       name: bot.name, avatar: bot.avatar, thinking: this.thinking,
       captured: capturedBy[botC], capturedColor: myC, matDiff: botC === 'w' ? diff : -diff,
+      clock: this.clockLeft(botC),
       isTurn: !this.over && turn === botC, pieceSet: this.board.set,
     });
     setPlayerBar(this.ui.barBottom, {
       name: myName(), avatar: '🙂',
       captured: capturedBy[myC], capturedColor: botC, matDiff: myC === 'w' ? diff : -diff,
+      clock: this.clockLeft(myC),
       isTurn: !this.over && turn === myC, pieceSet: this.board.set,
     });
     setMoveList(this.ui.movelist, this.chess.history());
@@ -105,7 +143,7 @@ class BotGame {
     this.ui.status.textContent = this.over ? 'Партия окончена'
       : this.chess.inCheck() ? (turn === myC ? 'Шах! Защитите короля' : 'Шах боту!')
       : turn === myC ? 'Ваш ход' : 'Бот думает…';
-    this.ui.btn_undo.disabled = this.thinking || this.over || this.chess.history().length < (this.color === 'w' ? 1 : 2);
+    this.ui.btn_undo.disabled = !!this.tc || this.thinking || this.over || this.chess.history().length < (this.color === 'w' ? 1 : 2);
     this.ui.btn_hint.disabled = this.thinking || this.over || turn !== myC;
     this.ui.btn_resign.disabled = this.over;
     this.saveState();
@@ -115,6 +153,7 @@ class BotGame {
     const hist = this.chess.history({ verbose: true });
     store.set('bot_game', {
       level: this.level, color: this.color, over: this.over, ts: Date.now(),
+      tc: this.tcName, rated: this.rated, hintsUsed: this.hintsUsed, clocks: this.clocks,
       moves: hist.map(m => m.from + m.to + (m.promotion || '')),
     });
   }
@@ -122,6 +161,7 @@ class BotGame {
   async playerMove(from, to, promo) {
     if (this.over || this.thinking || this.chess.turn() !== this.color) return false;
     let mv; try { mv = this.chess.move({ from, to, promotion: promo || 'q' }); } catch { return false; }
+    this.clockMove(this.color);
     this.hintArrow = null; this.board.setArrows([]);
     mv.captured ? sound.capture() : sound.move();
     if (this.chess.inCheck()) sound.check();
@@ -146,6 +186,7 @@ class BotGame {
     }
     if (r?.move && !this.over) {
       const mv = this.chess.move({ from: r.move.from, to: r.move.to, promotion: r.move.promotion || 'q' });
+      this.clockMove(this.color === 'w' ? 'b' : 'w');
       mv.captured ? sound.capture() : sound.move();
       if (this.chess.inCheck()) sound.check();
       this.update();
@@ -166,21 +207,24 @@ class BotGame {
   }
 
   async finish(result, reason) {
-    this.over = true; this.update();
+    this.over = true; clearInterval(this.clockTimer); this.update();
     const win = result === this.color, draw = result === 'draw';
     sound.end(win); haptic(win ? 'success' : draw ? 'warning' : 'error');
+    let ratingDelta = null, fresh = [];
     try {
-      const r = await api.saveGame({ mode: 'bot', difficulty: this.level, result, player_color: this.color, pgn: this.chess.pgn() });
+      const r = await api.saveGame({ mode: 'bot', difficulty: this.level, result, player_color: this.color, pgn: this.chess.pgn(), rated: this.rated, hints_used: this.hintsUsed });
       this.gameServerId = r.game?.id;
+      ratingDelta = r.game?.rated ? (r.game?.rating_delta ?? 0) : null;
+      fresh = r.game?.new_achievements || [];
     } catch {}
     refreshMe().catch(() => {});
     const emoji = win ? '🏆' : draw ? '🤝' : '😔';
     const title = win ? 'Победа!' : draw ? 'Ничья' : 'Поражение';
     gameResultModal({
-      emoji, title, sub: `${BOT_LEVELS[this.level].name} · ${reason}`,
+      emoji, title, sub: `${BOT_LEVELS[this.level].name} · ${reason}`, ratingDelta, achievements: fresh,
       buttons: [
         { label: '📊 Разбор партии', cls: 'primary', onClick: async () => { await maybeShowAd(); const { openAnalysisFlow } = await import('./analysis.js'); openAnalysisFlow({ pgn: this.chess.pgn(), gameId: this.gameServerId, playerColor: this.color, title: 'Разбор партии с ботом' }); } },
-        { label: '🔄 Реванш', cls: 'green', onClick: () => startBotGame({ level: this.level, color: this.color === 'w' ? 'b' : 'w' }) },
+        { label: '🔄 Реванш', cls: 'green', onClick: () => startBotGame({ level: this.level, color: this.color === 'w' ? 'b' : 'w', tc: this.tcName, rated: this.rated }) },
         { label: '🏠 На главную', onClick: async () => { await maybeShowAd(); const { nav } = await import('./main.js'); nav('home'); } },
       ],
     });
@@ -196,6 +240,7 @@ class BotGame {
     } catch {}
     const r = await askHint(this.chess.fen());
     if (r?.move) {
+      this.hintsUsed++;
       this.hintArrow = { from: r.move.from, to: r.move.to, color: 'rgba(76,175,125,.9)' };
       this.board.setArrows([this.hintArrow]);
       toast('💡 Лучший ход показан стрелкой');
@@ -246,9 +291,12 @@ class BotGame {
   }
 
   exit() {
+    this.pause();
     const { nav } = window.__cc_nav ? { nav: window.__cc_nav } : {};
     if (nav) nav('home'); else location.hash = '';
   }
 
-  destroy() { this.over = true; }
+  pause() { clearInterval(this.clockTimer); this.clockTimer = null; }
+
+  destroy() { this.over = true; this.pause(); }
 }

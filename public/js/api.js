@@ -95,4 +95,7 @@ export const api = {
   saveGame: g => req('/games', { method: 'POST', body: g }),
   games: () => req('/games'),
   unlockAnalysis: gameId => req('/analysis/unlock', { method: 'POST', body: { gameId } }),
+  leaderboard: scope => req('/leaderboard?scope=' + (scope || 'all')),
+  puzzleSolved: id => req('/puzzles/solved', { method: 'POST', body: { id } }),
+  lessonDone: id => req('/lessons/done', { method: 'POST', body: { id } }),
 };

@@ -5,6 +5,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
 import { byId, PREMIUM_GRANTS } from './catalog.js';
+import { BOT_RATING, K_FRIEND, K_BOT, delta, scoreOf } from './rating.js';
+import { checkAchievements } from './achievements.js';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'data');
 const FILE = path.join(ROOT, 'db.json');
@@ -84,9 +86,17 @@ export function getUser(id, name = 'Игрок') {
       owned: [],           // купленные ключи доступа
       rewarded_today: { day: '', count: 0 },
       stats: { bot: { w: 0, l: 0, d: 0 }, friend: { w: 0, l: 0, d: 0 } },
+      rating: 1200, rating_games: 0,
+      win_streak: 0, best_streak: 0,
+      achievements: [], opponents: {},
+      puzzles_solved: 0, puzzles_ids: [],
+      lessons_done: 0, lessons_ids: [],
     };
     save();
   }
+  // миграция старых профилей: недостающие поля
+  const u0 = db.users[key];
+  if (u0.rating === undefined) { u0.rating = 1200; u0.rating_games = 0; u0.win_streak = 0; u0.best_streak = 0; u0.achievements = []; u0.opponents = {}; u0.puzzles_solved = 0; u0.puzzles_ids = []; u0.lessons_done = 0; u0.lessons_ids = []; }
   if (name && name !== 'Игрок' && db.users[key].name !== name) { db.users[key].name = name; save(); }
   return db.users[key];
 }
@@ -118,6 +128,7 @@ export function grant(userId, productId, chargeId = null) {
     }
   }
   db.purchases.push({ user: u.id, product: productId, stars: p.stars, ts: Date.now(), charge: chargeId });
+  checkAchievements(u, {});
   save();
   return { ok: true, user: u };
 }
@@ -137,20 +148,82 @@ export function addRewardedHint(u) {
 
 export function saveGame(u, g) {
   const id = 'g' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-  db.games[id] = {
-    id, user: u.id, mode: g.mode, difficulty: g.difficulty || null,
-    result: g.result, player_color: g.player_color || 'w',
-    pgn: String(g.pgn || '').slice(0, 20000), ts: Date.now(), analyzed: false,
-  };
-  const s = g.mode === 'friend' ? u.stats.friend : u.stats.bot;
+  const mode = g.mode || 'bot';
   const pc = g.player_color || 'w';
-  if (g.result === 'draw') s.d++;
-  else if (g.result === pc) s.w++; else s.l++;
+  const result = g.result;
+  const win = result === pc, draw = result === 'draw';
+  const rated = !!g.rated && mode !== 'local';
+  let ratingDelta = 0;
+  if (rated) {
+    const score = scoreOf(result, pc);
+    if (typeof g.rating_delta === 'number') ratingDelta = g.rating_delta;
+    else {
+      const opp = g.opponent?.rating ?? BOT_RATING[g.difficulty] ?? 1200;
+      ratingDelta = delta(u.rating, opp, score, mode === 'friend' ? K_FRIEND : K_BOT);
+    }
+    u.rating = Math.max(100, u.rating + ratingDelta);
+    u.rating_games = (u.rating_games || 0) + 1;
+  }
+  if (mode !== 'local') {
+    if (win) { u.win_streak = (u.win_streak || 0) + 1; u.best_streak = Math.max(u.best_streak || 0, u.win_streak); }
+    else if (!draw) u.win_streak = 0;
+  }
+  if (mode === 'friend' && g.opponent?.id) {
+    u.opponents = u.opponents || {};
+    u.opponents[g.opponent.id] = { name: g.opponent.name || 'Игрок', ts: Date.now() };
+  }
+  const game = {
+    id, user: u.id, mode, difficulty: g.difficulty || null,
+    result, player_color: pc, pgn: String(g.pgn || '').slice(0, 20000), ts: Date.now(), analyzed: false,
+    rated, rating_delta: ratingDelta,
+  };
+  db.games[id] = game;
+  const s = mode === 'friend' ? u.stats.friend : u.stats.bot;
+  if (draw) s.d++; else if (win) s.w++; else s.l++;
   // ограничим историю 60 партиями на пользователя
   const mine = Object.values(db.games).filter(x => x.user === u.id).sort((a, b) => b.ts - a.ts);
   for (const old of mine.slice(60)) delete db.games[old.id];
+  const fresh = checkAchievements(u, { win, mode, difficulty: g.difficulty, hintsUsed: g.hints_used || 0 });
   save();
-  return db.games[id];
+  return { ...game, new_achievements: fresh };
+}
+
+// Таблица лидеров: все игроки или «друзья» (те, с кем играл) + ты.
+export function leaderboard(scope, u) {
+  const all = Object.values(db.users);
+  let pool = all;
+  if (scope === 'friends') {
+    const ids = new Set([u.id, ...Object.keys(u.opponents || {})]);
+    pool = all.filter(x => ids.has(x.id));
+  }
+  const rows = pool
+    .filter(x => (x.rating_games || 0) > 0 || x.id === u.id)
+    .sort((a, b) => b.rating - a.rating || (b.rating_games || 0) - (a.rating_games || 0))
+    .slice(0, 100)
+    .map((x, i) => ({
+      rank: i + 1, id: x.id, name: x.name, rating: x.rating,
+      games: (x.stats.bot.w + x.stats.bot.l + x.stats.bot.d) + (x.stats.friend.w + x.stats.friend.l + x.stats.friend.d),
+      rated_games: x.rating_games || 0,
+      w: x.stats.bot.w + x.stats.friend.w, l: x.stats.bot.l + x.stats.friend.l, d: x.stats.bot.d + x.stats.friend.d,
+      you: x.id === u.id,
+    }));
+  const you = rows.find(r => r.you) || null;
+  return { rows, you };
+}
+
+export function recordPuzzle(u, pid) {
+  u.puzzles_ids = u.puzzles_ids || [];
+  if (!u.puzzles_ids.includes(pid)) { u.puzzles_ids.push(pid); u.puzzles_solved = u.puzzles_ids.length; }
+  const fresh = checkAchievements(u, {});
+  save();
+  return fresh;
+}
+export function recordLesson(u, lid) {
+  u.lessons_ids = u.lessons_ids || [];
+  if (!u.lessons_ids.includes(lid)) { u.lessons_ids.push(lid); u.lessons_done = u.lessons_ids.length; }
+  const fresh = checkAchievements(u, {});
+  save();
+  return fresh;
 }
 
 export const listGames = u => Object.values(db.games).filter(g => g.user === u.id).sort((a, b) => b.ts - a.ts);
@@ -173,5 +246,9 @@ export function publicUser(u) {
     analysis_credits: isPremium(u) ? '∞' : u.analysis_credits,
     owned: isPremium(u) ? [...new Set([...u.owned, ...PREMIUM_GRANTS])] : u.owned,
     stats: u.stats,
+    rating: u.rating ?? 1200, rating_games: u.rating_games || 0,
+    win_streak: u.win_streak || 0, best_streak: u.best_streak || 0,
+    achievements: u.achievements || [],
+    puzzles_solved: u.puzzles_solved || 0, lessons_done: u.lessons_done || 0,
   };
 }

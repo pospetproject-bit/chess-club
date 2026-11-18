@@ -34,6 +34,7 @@ export class RoomManager {
         const room = {
           code, chess: new Chess(), status: 'waiting',
           tc: TIME_CONTROLS[m.tc] ?? null, tcName: m.tc || 'none',
+          rated: m.rated !== false,
           players: { [color]: { id: String(m.userId), name: String(m.name || 'Игрок').slice(0, 40), ws } },
           clocks: null, turnStart: 0, moves: [], lastMove: null,
           result: null, resultReason: null, drawOffer: null, rematch: new Set(),
@@ -164,7 +165,7 @@ export class RoomManager {
     this.broadcastState(room);
     try {
       this.onGameEnd({
-        pgn: room.chess.pgn(), result, reason,
+        pgn: room.chess.pgn(), result, reason, rated: room.rated,
         players: { w: { id: room.players.w?.id, name: room.players.w?.name }, b: { id: room.players.b?.id, name: room.players.b?.name } },
       });
     } catch (e) { console.error('[rooms] onGameEnd', e); }
@@ -220,7 +221,7 @@ export class RoomManager {
     return {
       t: 'state', code: room.code, status: room.status, you: color,
       fen: c.fen(), turn: c.turn(), moves: room.moves, lastMove: room.lastMove,
-      check: c.inCheck(), clocks, tc: room.tcName,
+      check: c.inCheck(), clocks, tc: room.tcName, rated: room.rated,
       players: { w: room.players.w && { name: room.players.w.name, online: !!room.players.w.ws }, b: room.players.b && { name: room.players.b.name, online: !!room.players.b.ws } },
       result: room.result, reason: room.resultReason,
       drawOffer: room.drawOffer, rematch: [...room.rematch],

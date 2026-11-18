@@ -5,6 +5,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
 import { CATALOG, byId } from './catalog.js';
+import { ACHIEVEMENTS } from './achievements.js';
+import { delta, scoreOf, K_FRIEND } from './rating.js';
 import * as db from './db.js';
 import { verifyInitData, createStarsInvoice, BOT_TOKEN, DEMO_MODE } from './telegram.js';
 import { startBot } from './bot.js';
@@ -45,6 +47,7 @@ app.get('/api/config', (req, res) => {
       rewarded: process.env.ADSGRAM_REWARDED_ID || null,
     },
     catalog: CATALOG,
+    achievements: ACHIEVEMENTS,
     support: process.env.SUPPORT_USERNAME || null,
   });
 });
@@ -89,6 +92,22 @@ app.post('/api/games', (req, res) => {
 });
 app.get('/api/games', (req, res) => res.json({ games: db.listGames(req.user) }));
 
+// Таблица лидеров: ?scope=all (по умолчанию) или friends
+app.get('/api/leaderboard', (req, res) => {
+  const scope = req.query.scope === 'friends' ? 'friends' : 'all';
+  res.json(db.leaderboard(scope, req.user));
+});
+
+// Прогресс обучения/задач — для достижений
+app.post('/api/puzzles/solved', (req, res) => {
+  const fresh = db.recordPuzzle(req.user, String(req.body?.id || '').slice(0, 20));
+  res.json({ ok: true, new_achievements: fresh, user: db.publicUser(req.user) });
+});
+app.post('/api/lessons/done', (req, res) => {
+  const fresh = db.recordLesson(req.user, String(req.body?.id || '').slice(0, 20));
+  res.json({ ok: true, new_achievements: fresh, user: db.publicUser(req.user) });
+});
+
 app.post('/api/analysis/unlock', (req, res) => {
   const r = db.unlockAnalysis(req.user, req.body?.gameId);
   res.json({ ...r, user: db.publicUser(req.user) });
@@ -104,12 +123,20 @@ const server = http.createServer(app);
 
 // --- WebSocket комнаты ---
 const wss = new WebSocketServer({ server, path: '/ws' });
-const rooms = new RoomManager(({ pgn, result, players }) => {
-  // сохраняем завершённую партию обоим реальным пользователям
+const rooms = new RoomManager(({ pgn, result, reason, rated, players }) => {
+  // сохраняем завершённую партию обоим реальным пользователям + Elo (zero-sum)
+  const uw = players.w?.id ? db.getUser(players.w.id, players.w.name) : null;
+  const ub = players.b?.id ? db.getUser(players.b.id, players.b.name) : null;
+  const dW = rated && uw && ub ? delta(uw.rating, ub.rating, scoreOf(result, 'w'), K_FRIEND) : 0;
   for (const c of ['w', 'b']) {
-    const p = players[c];
-    if (p?.id && db.getUser(p.id)) {
-      db.saveGame(db.getUser(p.id, p.name), { mode: 'friend', result, player_color: c, pgn });
+    const p = players[c]; const u = c === 'w' ? uw : ub;
+    if (p?.id && u) {
+      const opp = c === 'w' ? players.b : players.w;
+      db.saveGame(u, {
+        mode: 'friend', result, player_color: c, pgn, rated,
+        rating_delta: rated ? (c === 'w' ? dW : -dW) : 0,
+        opponent: opp?.id ? { id: opp.id, name: opp.name } : null,
+      });
     }
   }
 });

@@ -2,7 +2,8 @@
 import { Chess } from '../vendor/chess.js';
 import { BoardView } from './board.js';
 import { el, esc, toast, modal, store } from './util.js';
-import { has, purchase, priceOf } from './api.js';
+import { has, purchase, priceOf, api } from './api.js';
+import { announceAchievements } from './achievements.js';
 import { sound } from './sound.js';
 import { kingSquare } from './game-ui.js';
 
@@ -125,6 +126,7 @@ export function startPuzzle(puzzle, isDaily = false) {
     const s = solved();
     const key = puzzle.id + ':' + todayStr();
     if (!s.includes(key)) { s.push(key); store.set('puzzles_solved', s.slice(-200)); }
+    api.puzzleSolved(puzzle.id).then(r => announceAchievements(r.new_achievements)).catch(() => {});
     if (isDaily) {
       const st = streak();
       const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);

@@ -5,7 +5,7 @@ import { BoardView } from './board.js';
 import { renderGameShell, setPlayerBar, setMoveList, capturedFromFen, kingSquare } from './game-ui.js';
 import { sound } from './sound.js';
 import { store, toast, modal, confirmModal, el, esc, fmtClock, copyText } from './util.js';
-import { state as apiState, api, myId, myName } from './api.js';
+import { state as apiState, api, myId, myName, refreshMe } from './api.js';
 import { haptic, shareInvite, inviteLink } from './tg.js';
 import { maybeShowAd, gameResultModal } from './flow.js';
 
@@ -28,6 +28,7 @@ export function openFriendLobby(prefillCode = '') {
       <div class="choice-row" id="tc-choice" style="flex-wrap:wrap">
         ${TC_OPTIONS.map(([v, l], i) => `<button class="choice${i === 0 ? ' sel' : ''}" data-v="${v}" style="min-width:45%">${l}</button>`).join('')}
       </div>
+      <div class="setting-row" style="border:0;padding:8px 2px"><span>Рейтинговая партия (Elo)</span><button class="switch on" id="rated-sw" aria-label="рейтинговая"></button></div>
       <button class="btn primary block" id="create-btn">Создать комнату</button>
     </div>
     <div class="card">
@@ -36,14 +37,16 @@ export function openFriendLobby(prefillCode = '') {
       <button class="btn green block" id="join-btn" style="margin-top:10px">Войти в комнату</button>
     </div>`;
   root.querySelector('#lobby-back').onclick = () => window.__cc_nav('home');
-  let color = 'random', tc = 'none';
+  let color = 'random', tc = 'none', rated = true;
   const bindChoice = (id, cb) => root.querySelectorAll(`#${id} .choice`).forEach(b => b.onclick = () => {
     root.querySelectorAll(`#${id} .choice`).forEach(x => x.classList.remove('sel'));
     b.classList.add('sel'); cb(b.dataset.v); sound.click();
   });
   bindChoice('color-choice', v => color = v);
   bindChoice('tc-choice', v => tc = v);
-  root.querySelector('#create-btn').onclick = () => createRoom({ color, tc });
+  const rsw = root.querySelector('#rated-sw');
+  rsw.onclick = () => { rated = !rated; rsw.classList.toggle('on', rated); sound.click(); };
+  root.querySelector('#create-btn').onclick = () => createRoom({ color, tc, rated });
   root.querySelector('#join-btn').onclick = () => {
     const code = root.querySelector('#join-code').value.trim().toUpperCase();
     if (code.length < 4) { toast('Введите код комнаты', 'err'); return; }
@@ -83,7 +86,7 @@ class Conn {
 
 let activeConn = null;
 
-function createRoom({ color, tc }) {
+function createRoom({ color, tc, rated = true }) {
   const root = document.getElementById('room-root');
   let game = null;
   const conn = new Conn(m => {
@@ -102,7 +105,7 @@ function createRoom({ color, tc }) {
     else if (m.t === 'opponent_disconnected') game?.onOpponentDisconnect(m.grace);
     else if (m.t === 'opponent_reconnected') game?.onOpponentReconnect();
     else if (m.t === 'clock') game?.onClock(m);
-  }, s => game?.onConnStatus(s), { t: 'create', userId: myId(), name: myName(), color, tc });
+  }, s => game?.onConnStatus(s), { t: 'create', userId: myId(), name: myName(), color, tc, rated });
   activeConn = conn;
 
   function showWaiting(code) {
@@ -163,6 +166,8 @@ class FriendGame {
     this.resultShown = false;
     this.clockVals = st.clocks;
     this.disconnTimer = null;
+    this.startRating = apiState.me?.rating ?? 1200;
+    this.startAch = new Set((apiState.me?.achievements || []).map(a => a.id));
     this.buildUI();
     this.onState(st, true);
   }
@@ -206,7 +211,11 @@ class FriendGame {
       this.board.orientation = st.you;
       this.board._buildSquares();
     }
-    if (st.status === 'active' && prevStatus === 'over') { this.resultShown = false; this.rematchBtn = null; }
+    if (st.status === 'active' && prevStatus === 'over') {
+      this.resultShown = false; this.rematchBtn = null;
+      this.startRating = apiState.me?.rating ?? 1200;
+      this.startAch = new Set((apiState.me?.achievements || []).map(a => a.id));
+    }
     this.mirror = new Chess(st.fen);
     this.board.setPosition(st.fen, { lastMove: st.lastMove, animate: !initial });
     this.clockVals = st.clocks || this.clockVals;
@@ -295,7 +304,7 @@ class FriendGame {
     if (await confirmModal('Сдаться?', 'Партия будет засчитана как поражение.', 'Сдаться')) this.conn.send({ t: 'resign' });
   }
 
-  showResult() {
+  async showResult() {
     this.resultShown = true;
     const st = this.st;
     const win = st.result === this.you, draw = st.result === 'draw';
@@ -303,8 +312,17 @@ class FriendGame {
     const emoji = win ? '🏆' : draw ? '🤝' : '😔';
     const title = win ? 'Победа!' : draw ? 'Ничья' : 'Поражение';
     const pgnSans = st.moves.join(' ');
+    let ratingDelta = null, fresh = [];
+    if (st.rated) {
+      try {
+        const me = await refreshMe();
+        ratingDelta = (me.rating ?? 1200) - this.startRating;
+        const now = new Set((me.achievements || []).map(a => a.id));
+        fresh = (apiState.config?.achievements || []).filter(a => now.has(a.id) && !this.startAch.has(a.id));
+      } catch {}
+    }
     gameResultModal({
-      emoji, title, sub: REASONS[st.reason] || '',
+      emoji, title, sub: REASONS[st.reason] || '', ratingDelta, achievements: fresh,
       buttons: [
         { label: '🔄 Реванш (смена цвета)', cls: 'green', onClick: () => { this.conn.send({ t: 'rematch' }); toast('Предложение реванша отправлено'); } },
         { label: '📊 Разбор партии', cls: 'primary', onClick: async () => {
