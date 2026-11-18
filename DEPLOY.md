@@ -141,9 +141,25 @@ Neon → строку подключения можно сбросить (Reset 
 
 ## Шаг 5. Реклама Adsgram (необязательно, можно позже)
 
-1. https://adsgram.ai → регистрация → создайте два блока: **Interstitial** и **Rewarded**.
-2. Пришлите мне их ID (`ADSGRAM_INTERSTITIAL_ID`, `ADSGRAM_REWARDED_ID`) — я включу.
-   До тех пор реклама просто не показывается (в демо — заглушка).
+Регистрация возможна только с вашего аккаунта (модерация привязана к владельцу).
+Все данные для форм уже готовы:
+
+1. https://partner.adsgram.ai/registration → создайте аккаунт.
+2. **Create platform** → тип **Telegram Mini-app**:
+   - App name: `Шахматный Клуб`
+   - Telegram direct link: `https://t.me/pos_chess_club_bot/play`
+   - Web app url: `https://chess-club-1sph.onrender.com`
+   - Bot ID: `9040543584`
+3. Внутри платформы **+ Block** → создайте два блока:
+   - тип **Interstitial** (имя `after-game`) — показ после партий;
+   - тип **Reward** (имя `hint-reward`) — награда за просмотр (подсказки).
+4. Нажмите **Start** → платформа и блоки уйдут на модерацию.
+5. **<> Show code** → **Copy BlockID** у каждого блока → пришлите мне оба ID
+   (`ADSGRAM_INTERSTITIAL_ID`, `ADSGRAM_REWARDED_ID`) — я включу за минуту.
+   До модерации реклама просто не показывается — приложение работает как обычно.
+
+✅ Поддержка и условия уже подключены: `/paysupport` → @N_Pos,
+`/terms` → https://telegra.ph/Usloviya-ispolzovaniya--SHahmatnyj-Klub-11-18-2
 
 ## Шаг 6. Чтобы сервер не «засыпал» (бесплатный лайфхак)
 
