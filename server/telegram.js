@@ -44,12 +44,18 @@ export async function createStarsInvoice({ title, description, payload, stars })
   });
 }
 
+export const APP_TABS = ['home', 'learn', 'puzzles', 'rating', 'store', 'profile'];
+
 export function webappButtonUrl(startParam = '') {
   // Прямой HTTPS-адрес мини-аппа (продакшен) или t.me deep link.
+  // startParam: 'join_CODE' — приглашение в партию; имя вкладки — открыть нужный экран.
   const direct = process.env.WEBAPP_URL;
   const bot = process.env.BOT_USERNAME;
   const short = process.env.APP_SHORT_NAME;
-  if (direct) return direct + (startParam ? `#join=${startParam}` : '');
-  if (bot && short) return `https://t.me/${bot}/${short}${startParam ? `?startapp=${startParam}` : ''}`;
+  let hash = '', sa = '';
+  if (startParam.startsWith('join_')) { hash = '#join=' + startParam.slice(5); sa = startParam; }
+  else if (APP_TABS.includes(startParam)) { hash = '#tab=' + startParam; sa = startParam; }
+  if (direct) return direct + hash;
+  if (bot && short) return `https://t.me/${bot}/${short}${sa ? `?startapp=${sa}` : ''}`;
   return null;
 }

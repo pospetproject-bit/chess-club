@@ -233,9 +233,14 @@ async function boot() {
   // deep link приглашения
   const hashJoin = location.hash.match(/join=([A-Z0-9]{4,6})/i)?.[1];
   const joinCode = (startParam || '').startsWith('join_') ? startParam.slice(5) : hashJoin;
+  // deep link вкладки из меню бота (#tab=rating или startapp=rating)
+  const hashTab = location.hash.match(/tab=([a-z]+)/)?.[1];
+  const tabParam = ['home', 'learn', 'puzzles', 'rating', 'store', 'profile'].includes(startParam) ? startParam : hashTab;
   if (joinCode) {
     openFriendLobby(joinCode.toUpperCase());
     show('room');
+  } else if (tabParam && tabParam !== 'home') {
+    nav(tabParam);
   }
 }
 

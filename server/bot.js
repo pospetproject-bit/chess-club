@@ -15,15 +15,51 @@ function playKeyboard(startParam = '') {
   return { inline_keyboard: rows };
 }
 
-const WELCOME = `♟ <b>Шахматный Клуб</b> — шахматы прямо в Telegram!
+// Богатое меню бота: каждый раздел открывает нужную вкладку мини-аппа.
+function menuKeyboard() {
+  const b = (text, tab) => ({ text, web_app: { url: webappButtonUrl(tab) } });
+  return {
+    inline_keyboard: [
+      [b('♟ Играть', 'home')],
+      [b('🏆 Рейтинг', 'rating'), b('🎓 Уроки', 'learn')],
+      [b('🧩 Задачи', 'puzzles'), b('⭐ Магазин', 'store')],
+      [b('👤 Профиль', 'profile')],
+      [{ text: 'ℹ️ Помощь', callback_data: 'help' }],
+    ],
+  };
+}
 
-• Игра с ботом: лёгкий, средний и сложный уровни
-• Игра с друзьями по ссылке-приглашению
-• Разбор партий с оценкой каждого хода
-• Интерактивные курсы и задача дня
-• Красивые доски и фигуры в магазине
+const WELCOME = `♛ <b>Шахматный Клуб</b>
+<i>Элегантные шахматы внутри Telegram</i>
 
-Жми «Открыть» и играй! 🎮`;
+♟ Партии с ботом и с друзьями по ссылке
+🏆 Рейтинг Elo и таблица лидеров клуба
+⏱ Шахматные часы и разбор каждой партии
+🎓 Интерактивные курсы и задача дня
+🎖 Достижения, премиум-доски и фигуры
+
+Выберите раздел ниже — или откройте клуб и сыграйте первую партию. Ваш рейтинг уже ждёт.`;
+
+const TAB_CMD = { '/play': 'home', '/rating': 'rating', '/learn': 'learn', '/puzzles': 'puzzles', '/store': 'store', '/profile': 'profile' };
+const TAB_MSG = {
+  home: '♟ <b>Играть</b> — партии с ботом трёх уровней и с друзьями.',
+  rating: '🏆 <b>Рейтинг</b> — таблица лидеров клуба и твоё место в ней.',
+  learn: '🎓 <b>Обучение</b> — интерактивные курсы: делай ходы прямо на доске.',
+  puzzles: '🧩 <b>Задачи</b> — задача дня бесплатно и тактическая библиотека.',
+  store: '⭐ <b>Магазин</b> — премиум-доски, фигуры, курсы и подписка.',
+  profile: '👤 <b>Профиль</b> — статистика, достижения и история партий.',
+};
+
+export const BOT_DESCRIPTION = `♛ Шахматный Клуб — элегантные шахматы внутри Telegram.
+
+♟ Партии с ботом трёх уровней и с друзьями по ссылке
+🏆 Рейтинговые партии Elo и таблица лидеров клуба
+⏱ Шахматные часы и разбор партий с оценкой каждого хода
+🎓 Интерактивные курсы, задача дня и тактические задачи
+🎖 Достижения, премиум-доски и фигуры
+
+Откройте приложение и сыграйте первую партию — рейтинг ждёт.`;
+export const BOT_SHORT_DESCRIPTION = 'Элегантные шахматы в Telegram: бот, друзья, рейтинг Elo, часы, разбор партий, курсы и задачи.';
 
 async function handleMessage(msg) {
   const chatId = msg.chat.id;
@@ -39,11 +75,17 @@ async function handleMessage(msg) {
         chat_id: chatId,
         text: `⚔️ <b>Вас пригласили в партию!</b>\nКомната: <code>${code}</code>\n\nОткройте приложение и присоединяйтесь — соперник уже ждёт.`,
         parse_mode: 'HTML',
-        reply_markup: playKeyboard(code),
+        reply_markup: playKeyboard('join_' + code),
       });
     } else {
-      await tgApi('sendMessage', { chat_id: chatId, text: WELCOME, parse_mode: 'HTML', reply_markup: playKeyboard() });
+      await tgApi('sendMessage', { chat_id: chatId, text: WELCOME, parse_mode: 'HTML', reply_markup: menuKeyboard() });
     }
+  } else if (TAB_CMD[text.split(' ')[0]]) {
+    const tab = TAB_CMD[text.split(' ')[0]];
+    await tgApi('sendMessage', {
+      chat_id: chatId, text: TAB_MSG[tab], parse_mode: 'HTML',
+      reply_markup: { inline_keyboard: [[{ text: 'Открыть', web_app: { url: webappButtonUrl(tab) } }]] },
+    });
   } else if (text.startsWith('/help')) {
     await tgApi('sendMessage', {
       chat_id: chatId, parse_mode: 'HTML',
@@ -82,7 +124,7 @@ async function handlePayment(msg) {
     await tgApi('sendMessage', {
       chat_id: msg.chat.id, parse_mode: 'HTML',
       text: `✅ <b>${p.title}</b> — оплачено (${pay.total_amount} ⭐).\nПокупка уже активна в приложении. Спасибо, что поддерживаете проект! ♟`,
-      reply_markup: playKeyboard(),
+      reply_markup: menuKeyboard(),
     });
   }
 }
@@ -94,6 +136,22 @@ export async function startBot() {
     console.log(`[bot] запущен как @${me.username}`);
     if (!process.env.BOT_USERNAME) process.env.BOT_USERNAME = me.username;
     await tgApi('setChatMenuButton', { menu_button: { type: 'web_app', text: '♟ Играть', web_app: { url: webappButtonUrl() } } }).catch(() => {});
+    await tgApi('setMyCommands', {
+      commands: [
+        { command: 'start', description: 'Главное меню клуба' },
+        { command: 'play', description: 'Играть с ботом или другом' },
+        { command: 'rating', description: 'Рейтинг и таблица лидеров' },
+        { command: 'learn', description: 'Интерактивные уроки' },
+        { command: 'puzzles', description: 'Задача дня и тактика' },
+        { command: 'store', description: 'Магазин: доски, фигуры, премиум' },
+        { command: 'profile', description: 'Профиль и достижения' },
+        { command: 'help', description: 'Как играть' },
+        { command: 'paysupport', description: 'Поддержка по оплатам' },
+        { command: 'terms', description: 'Условия использования' },
+      ],
+    }).catch(() => {});
+    await tgApi('setMyDescription', { description: BOT_DESCRIPTION }).catch(() => {});
+    await tgApi('setMyShortDescription', { short_description: BOT_SHORT_DESCRIPTION }).catch(() => {});
   } catch (e) { console.error('[bot] не удалось стартовать:', e.message); return; }
 
   let offset = 0;
