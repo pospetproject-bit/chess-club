@@ -1,5 +1,5 @@
 // Главный модуль: роутер, главная, профиль, настройка партии с ботом.
-import { $, $$, el, esc, store, toast, modal, fmtDate, copyText } from './util.js';
+import { $, $$, el, esc, store, toast, modal, fmtDate, copyText, sleep } from './util.js';
 import * as api from './api.js';
 import { inTelegram, startParam, initAds, backButton, haptic, canSeeAdsDiagnostics, openAdsDiagnostics } from './tg.js';
 import { sound } from './sound.js';
@@ -221,6 +221,26 @@ async function renderProfile() {
   }
 }
 
+// ---------- экран пробуждения сервера ----------
+// Бесплатный хостинг засыпает без игроков: первый вход может занять до минуты.
+// Показываем спокойный экран клуба вместо пугающей ошибки.
+function wakeScreen(html, withRetry = false) {
+  let o = document.getElementById('wake-overlay');
+  if (!o) {
+    o = document.createElement('div');
+    o.id = 'wake-overlay';
+    document.body.appendChild(o);
+  }
+  o.innerHTML = `<div class="wake-box">
+    <svg class="wake-knight" viewBox="0 0 100 100"><use href="#knight-logo"/></svg>
+    <h2>Шахматный Клуб</h2>
+    <p class="muted wake-msg">${html}</p>
+    ${withRetry ? '<button class="btn primary block" id="wake-retry">♻️ Повторить</button>' : '<div class="spinner"></div>'}
+  </div>`;
+  if (withRetry) o.querySelector('#wake-retry').onclick = () => { o.remove(); boot(); };
+  return o;
+}
+
 // ---------- старт ----------
 async function boot() {
   $$('#tabbar .tab').forEach(b => b.onclick = () => { sound.click(); nav(b.dataset.tab); });
@@ -228,13 +248,24 @@ async function boot() {
   $('#btn-friend').onclick = () => { openFriendLobby(); show('room'); };
   $('#btn-local').onclick = () => { startLocalGame(); show('game'); };
   $('#btn-learn-home').onclick = () => nav('learn');
-  try {
-    await api.init();
-    window.__cc_config = api.state.config;
-    initAds(api.state.config.adsgram, api.state.config.ownerId);
-  } catch (e) {
-    toast('Сервер недоступен: ' + e.message, 'err', 5000);
+  let connected = false;
+  for (let attempt = 1; attempt <= 5 && !connected; attempt++) {
+    try {
+      await api.init();
+      window.__cc_config = api.state.config;
+      initAds(api.state.config.adsgram, api.state.config.ownerId);
+      connected = true;
+    } catch (e) {
+      if (attempt < 5) {
+        wakeScreen(`Пробуждаем сервер…<br>Бесплатный хостинг засыпает без игроков, первый вход занимает до минуты. Попытка ${attempt} из 5.`);
+        await sleep(6000);
+      } else {
+        wakeScreen('Клуб не отвечает.<br>Прокси в Telegram не помогает мини-аппам — попробуйте VPN, Wi-Fi или мобильный интернет и нажмите «Повторить».', true);
+      }
+    }
   }
+  document.getElementById('wake-overlay')?.remove();
+  if (!connected) return;
   renderHome();
   show('home');
   // deep link приглашения

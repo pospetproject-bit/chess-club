@@ -1,0 +1,33 @@
+name: Keep chess club awake
+
+# Бесплатный Render засыпает через 15 минут без запросов — и вместе с ним
+# засыпает бот. Пингуем /healthz каждые 10 минут, чтобы игроки никогда
+# не видели заставку «Service waking up».
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: keep-awake
+  cancel-in-progress: true
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - name: Будим клуб и проверяем здоровье
+        run: |
+          url="https://chess-club-1sph.onrender.com/healthz"
+          for i in $(seq 1 10); do
+            body=$(curl -s --max-time 45 "$url" || true)
+            if [ "$body" = "ok" ]; then
+              echo "клуб бодрствует (попытка $i)"
+              exit 0
+            fi
+            echo "попытка $i: сервис ещё просыпается…"
+            sleep 8
+          done
+          echo "::warning::клуб не ответил ok за 10 попыток"
+          exit 1
