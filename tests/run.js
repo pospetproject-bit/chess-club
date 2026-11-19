@@ -4,6 +4,7 @@ import { LESSONS, PACKS } from '../public/js/data-lessons.js';
 import { PUZZLES } from '../public/js/data-puzzles.js';
 import { bestMove, analyzeFen } from '../public/js/engine.js';
 import { CATALOG, byId, PREMIUM_GRANTS } from '../server/catalog.js';
+import { adOutcome } from '../public/js/ads-result.js';
 import { spawn } from 'node:child_process';
 import WebSocket from 'ws';
 
@@ -98,6 +99,27 @@ ok(CATALOG.every(p => Number.isInteger(p.stars) && p.stars > 0), 'все цен�
 ok(new Set(CATALOG.map(p => p.id)).size === CATALOG.length, 'id товаров уникальны');
 ok(CATALOG.filter(p => p.type === 'premium').length === 1, 'ровно один премиум-продукт');
 ok(PREMIUM_GRANTS.includes('no_ads'), 'премиум отключает рекламу');
+
+console.log('— Реклама: разбор ответов Adsgram —');
+{
+  const R = d => ({ description: d, state: 'destroy', error: false, done: true });
+  ok(adOutcome(R('The banner was viewed to the end')).ok, 'rewarded: досмотрел → награда');
+  ok(!adOutcome({ description: 'The banner was skipped', done: false }).ok, 'rewarded: пропустил → без награды');
+  const anti = adOutcome({ description: 'Антифрод: подозрительная активность, награда не засчитана.', done: true });
+  ok(!anti.ok, 'rewarded: антифрод не даёт награду даже при done=true');
+  const noFill = adOutcome({ description: 'No banner data to show', done: false });
+  ok(!noFill.ok && /Свободных роликов/.test(noFill.msg), 'rewarded: нет рекламы → понятное сообщение');
+  ok(!adOutcome({ description: 'Упс! В данный момент нет доступной рекламы. Попробуйте ещё раз чуть позже 🙏' }).ok, 'rewarded: русский no-fill распознан');
+  ok(adOutcome({ description: 'The user is trying to watch several ads in a row.', error: true }).silent, 'rewarded: слишком часто → без дубля тоста (SDK сам показывает alert)');
+  ok(adOutcome({ description: 'Attempt to call show when an ad is being shown', error: true }).silent, 'rewarded: повторный show → тихо');
+  const rend = adOutcome({ description: 'Error during render ad', error: true });
+  ok(rend.err && /Обнови Telegram/.test(rend.msg), 'rewarded: ошибка рендера → совет обновить Telegram');
+  const play = adOutcome({ description: 'Error during playing ad', error: true });
+  ok(play.err && /энергосбережение/.test(play.msg), 'rewarded: видео не играет → совет про энергосбережение/VPN');
+  ok(!adOutcome(undefined).ok && adOutcome(undefined).err, 'rewarded: пустой ответ → ошибка, а не награда');
+  ok(adOutcome(R('The banner was viewed to the end')).raw.description === 'The banner was viewed to the end', 'rewarded: сырой ответ сохранён для диагностики');
+  ok(adOutcome({ description: 'The interstitial banner was viewed to the end or closed', done: true }).ok, 'interstitial: закрытие засчитывается');
+}
 
 console.log('— Рейтинг и достижения —');
 {

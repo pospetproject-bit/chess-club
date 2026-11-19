@@ -255,10 +255,14 @@ class BotGame {
         <button class="btn block" data-a="buy">Купить 20 подсказок — ${priceOf('hints_20')} ⭐</button>
         <button class="btn primary block" data-a="premium">♛ Премиум — безлимитные подсказки</button>
       </div>`);
-    m.root.querySelector('[data-a=ad]').onclick = async () => {
-      m.close();
+    const adBtn = m.root.querySelector('[data-a=ad]');
+    adBtn.onclick = async () => {
+      const label = adBtn.textContent;
+      adBtn.disabled = true; adBtn.textContent = '⏳ Реклама…';
       const done = await showRewarded();
+      adBtn.disabled = false; adBtn.textContent = label;
       if (done) {
+        m.close();
         try {
           const r = await api.rewardHint();
           if (r.ok) { state.me = r.user; this.updateHintBtn(); toast('🎁 +1 подсказка!', 'ok'); sound.coin(); }
