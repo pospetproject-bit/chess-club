@@ -294,7 +294,18 @@ try {
   ok(/^\/avatar\//.test(meAv.data.user.avatar || ''), 'профиль: ссылка на аватар приходит');
   const lbAv = await j('/api/leaderboard?scope=all');
   ok((lbAv.data.rows || []).length > 0 && (lbAv.data.rows || []).every(r => /^\/avatar\//.test(r.avatar || '')), 'рейтинг: аватары у всех строк');
-  const { isSafePhotoUrl } = await import('../server/avatars.js');
+  const { isSafePhotoUrl, fetchFromTelegram } = await import('../server/avatars.js');
+  // мок Bot API: проверяем, что фото реально скачивается (регресс на двойной .result)
+  {
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = async () => ({ ok: true, arrayBuffer: async () => new Uint8Array([1, 2, 3, 4]).buffer });
+    const fakeApi = async method => method === 'getUserProfilePhotos'
+      ? { total_count: 1, photos: [[{ width: 100, file_id: 's' }, { width: 320, file_id: 'm' }]] }
+      : { file_path: 'photos/file_1.jpg' };
+    const got = await fetchFromTelegram('123', fakeApi);
+    globalThis.fetch = realFetch;
+    ok(got?.ok === true && got.mime === 'image/jpeg' && got.buf.length === 4, 'аватар: фото скачивается из Bot API (правильный разбор ответа)');
+  }
   ok(isSafePhotoUrl('https://t.me/i/userpic/320/abc.jpg'), 'аватар: ссылка на CDN Telegram разрешена');
   ok(!isSafePhotoUrl('https://evil.com/x.jpg') && !isSafePhotoUrl('http://t.me/i/userpic/1.jpg') && !isSafePhotoUrl('https://t.me/other/1.jpg'), 'аватар: чужие адреса отклоняются (защита от SSRF)');
   ok((await j('/api/me/photo', { method: 'POST', body: { url: 'https://evil.com/x.jpg' } })).status === 400, 'аватар: сервер не принимает левую ссылку');

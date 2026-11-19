@@ -58,14 +58,15 @@ async function fetchPhotoUrl(url) {
   return { buf, mime, ok: true };
 }
 
-async function fetchFromTelegram(id) {
-  const photos = await tgApi('getUserProfilePhotos', { user_id: Number(id), limit: 1 });
-  const sizes = photos?.result?.photos?.[0];
+// tgApi уже возвращает поле result — не нужно обращаться к .result повторно.
+export async function fetchFromTelegram(id, api = tgApi) {
+  const photos = await api('getUserProfilePhotos', { user_id: Number(id), limit: 1 });
+  const sizes = photos?.photos?.[0];
   if (!sizes?.length) return null;
   // берём средний размер (обычно 320×320) — хватает для retina-аватарки 40–72 px
   const pick = sizes.find(s => s.width >= 160 && s.width <= 400) || sizes[sizes.length - 1];
-  const file = await tgApi('getFile', { file_id: pick.file_id });
-  const filePath = file?.result?.file_path;
+  const file = await api('getFile', { file_id: pick.file_id });
+  const filePath = file?.file_path;
   if (!filePath) return null;
   const r = await fetch(`https://api.telegram.org/file/bot${BOT_TOKEN}/${filePath}`, { signal: AbortSignal.timeout(8000) });
   if (!r.ok) return null;
