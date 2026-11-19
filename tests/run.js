@@ -117,7 +117,7 @@ console.log('— Реклама: разбор ответов Adsgram —');
   const play = adOutcome({ description: 'Error during playing ad', error: true });
   ok(play.err && /энергосбережение/.test(play.msg), 'rewarded: видео не играет → совет про энергосбережение/VPN');
   ok(!adOutcome(undefined).ok && adOutcome(undefined).err, 'rewarded: пустой ответ → ошибка, а не награда');
-  ok(adOutcome(R('The banner was viewed to the end')).raw.description === 'The banner was viewed to the end', 'rewarded: сырой ответ сохранён для диагностики');
+  ok(adOutcome(R('The banner was viewed to the end')).raw.description === 'The banner was viewed to the end', 'rewarded: сырой ответ сохранён для текста ошибки');
   ok(adOutcome({ description: 'The interstitial banner was viewed to the end or closed', done: true }).ok, 'interstitial: закрытие засчитывается');
 }
 

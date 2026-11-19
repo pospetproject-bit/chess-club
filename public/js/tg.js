@@ -1,5 +1,5 @@
 // Мост к Telegram WebApp: initData, хаптики, инвойсы Stars, реклама Adsgram, шаринг.
-import { toast, modal, sleep, copyText } from './util.js';
+import { toast, modal, sleep } from './util.js';
 import { adOutcome } from './ads-result.js';
 
 const tg = window.Telegram?.WebApp || null;
@@ -30,7 +30,6 @@ const ADS_SDK_URL = 'https://sad.adsgram.ai/js/sad.min.js';
 let adsControllers = { interstitial: null, rewarded: null };
 let adsgramIds = { interstitial: null, rewarded: null };
 let adsReady = null;
-let adsOwnerId = null;
 let sdkState = 'idle';        // idle | loading | ready | failed
 let sdkAttempts = 0;
 let sdkLoadMs = 0;
@@ -38,11 +37,8 @@ let lastAdError = null;
 let lastAdResult = null;
 let adBusy = false;
 let lastRewardAt = 0;
-const adsLog = [];
 
 function logAd(msg, data) {
-  adsLog.push({ t: new Date().toLocaleTimeString('ru-RU'), msg, data: data ? JSON.stringify(data) : '' });
-  if (adsLog.length > 12) adsLog.shift();
   try { console.log('[ads]', msg, data || ''); } catch {}
 }
 
@@ -79,9 +75,8 @@ function loadAdsSdk() {
   });
 }
 
-export function initAds(cfg, ownerId) {
+export function initAds(cfg) {
   adsgramIds = cfg || {};
-  adsOwnerId = ownerId ? String(ownerId) : null;
   if (!inTelegram || (!adsgramIds.interstitial && !adsgramIds.rewarded)) return;
   adsReady = loadAdsSdk();
 }
@@ -155,77 +150,6 @@ export async function showRewarded() {
   } finally { adBusy = false; }
 }
 
-// ---------- диагностика рекламы (видна владельцу и по #adsdebug) ----------
-export const adsDebugEnabled = () => location.search.includes('adsdebug') || location.hash.includes('adsdebug');
-export const canSeeAdsDiagnostics = () => adsDebugEnabled() || !!(adsOwnerId && tgUser && String(tgUser.id) === adsOwnerId);
-
-export function adsReport() {
-  return {
-    inTelegram,
-    platform: tg?.platform || 'browser',
-    tgVersion: tg?.version || '-',
-    sdk: sdkState,
-    sdkAttempts, sdkLoadMs,
-    sdkGlobal: !!window.Adsgram,
-    blocks: adsgramIds,
-    controllers: { interstitial: !!adsControllers.interstitial, rewarded: !!adsControllers.rewarded },
-    online: navigator.onLine,
-    net: navigator.connection?.effectiveType || '-',
-    ua: navigator.userAgent,
-    lastError: lastAdError,
-    lastResult: lastAdResult,
-    log: adsLog,
-  };
-}
-window.__adsDebug = adsReport;
-window.__adsTest = (kind = 'rewarded') => (kind === 'interstitial' ? showInterstitial() : showRewarded());
-
-async function probeUrl(url) {
-  const t0 = Date.now();
-  try { await fetch(url, { mode: 'no-cors', cache: 'no-store' }); return `доступен (${Date.now() - t0} мс)`; }
-  catch (e) { return 'НЕ доступен: ' + (e?.message || e); }
-}
-
-export function openAdsDiagnostics() {
-  const m = modal(`<h3>🛠 Диагностика рекламы</h3>
-    <p class="muted" style="line-height:1.5">Если ролик не играет на телефоне — нажми «Тест рекламы», затем «Скопировать отчёт» и пришли его в поддержку.</p>
-    <pre id="ads-rep" style="white-space:pre-wrap;font-size:11px;line-height:1.45;max-height:38vh;overflow:auto;background:rgba(255,255,255,.04);border:1px solid var(--line);border-radius:12px;padding:10px;margin:10px 0"></pre>
-    <div style="display:flex;flex-direction:column;gap:8px">
-      <button class="btn green block" data-a="test">🎬 Тест рекламы за награду</button>
-      <button class="btn block" data-a="net">🌐 Проверить сеть Adsgram</button>
-      <button class="btn block" data-a="reload">♻️ Перезагрузить SDK</button>
-      <button class="btn primary block" data-a="copy">📋 Скопировать отчёт</button>
-    </div>`);
-  const pre = m.root.querySelector('#ads-rep');
-  const paint = extra => { pre.textContent = JSON.stringify(adsReport(), null, 1) + (extra ? '\n\nСЕТЬ:\n' + extra : ''); };
-  paint();
-  m.root.querySelector('[data-a=test]').onclick = async e => {
-    e.target.disabled = true;
-    const ok = await showRewarded();
-    e.target.disabled = false;
-    paint();
-    toast(ok ? '✅ Реклама засчитана' : '❌ Не засчитана: ' + (lastAdResult?.description || lastAdError || 'нет данных'), ok ? 'ok' : 'err', 5000);
-  };
-  m.root.querySelector('[data-a=net]').onclick = async e => {
-    e.target.disabled = true;
-    const sdk = await probeUrl(ADS_SDK_URL);
-    const api = await probeUrl('https://api.adsgram.ai/');
-    e.target.disabled = false;
-    paint('sad.adsgram.ai (SDK): ' + sdk + '\napi.adsgram.ai (ролики): ' + api);
-  };
-  m.root.querySelector('[data-a=reload]').onclick = async e => {
-    e.target.disabled = true;
-    adsControllers = { interstitial: null, rewarded: null };
-    adsReady = loadAdsSdk();
-    await Promise.race([adsReady, sleep(20000)]);
-    e.target.disabled = false;
-    paint();
-  };
-  m.root.querySelector('[data-a=copy]').onclick = async () => {
-    await copyText(pre.textContent);
-    toast('Отчёт скопирован', 'ok');
-  };
-}
 // ---------- оплата Stars ----------
 // Возвращает 'paid' | 'cancelled' | 'failed' | 'pending'
 export function openInvoice(url) {

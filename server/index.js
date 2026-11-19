@@ -66,7 +66,6 @@ app.get('/api/config', (req, res) => {
     catalog: CATALOG,
     achievements: ACHIEVEMENTS,
     support: process.env.SUPPORT_USERNAME || null,
-    ownerId: process.env.OWNER_ID || '455839789',
   });
 });
 

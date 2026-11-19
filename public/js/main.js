@@ -1,7 +1,7 @@
 // Главный модуль: роутер, главная, профиль, настройка партии с ботом.
 import { $, $$, el, esc, store, toast, modal, fmtDate, copyText, sleep } from './util.js';
 import * as api from './api.js';
-import { inTelegram, startParam, initAds, backButton, haptic, canSeeAdsDiagnostics, openAdsDiagnostics } from './tg.js';
+import { inTelegram, startParam, initAds, backButton, haptic } from './tg.js';
 import { sound } from './sound.js';
 import { startBotGame, hasSavedBotGame, BOT_LEVELS, TC_OPTIONS } from './game-bot.js';
 import { openFriendLobby, startLocalGame, leaveActiveRoom, pendingFriendSession, resumeFriendSession } from './game-friend.js';
@@ -187,13 +187,6 @@ async function renderProfile() {
     row.appendChild(sw);
     sBox.appendChild(row);
   }
-  // Диагностика рекламы — только владельцу клуба (или по ссылке с #adsdebug)
-  if (canSeeAdsDiagnostics()) {
-    const dbg = el('button', 'btn sm ghost block', '🛠 Диагностика рекламы');
-    dbg.style.marginTop = '10px';
-    dbg.onclick = () => openAdsDiagnostics();
-    sBox.appendChild(dbg);
-  }
   // достижения
   renderAchievementsGrid(root.querySelector('#achievements'), me);
   // история
@@ -253,7 +246,7 @@ async function boot() {
     try {
       await api.init();
       window.__cc_config = api.state.config;
-      initAds(api.state.config.adsgram, api.state.config.ownerId);
+      initAds(api.state.config.adsgram);
       connected = true;
     } catch (e) {
       if (attempt < 5) {
