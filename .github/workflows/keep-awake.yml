@@ -8,6 +8,9 @@ on:
     - cron: '*/10 * * * *'
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 concurrency:
   group: keep-awake
   cancel-in-progress: true
@@ -31,3 +34,26 @@ jobs:
           done
           echo "::warning::клуб не ответил ok за 10 попыток"
           exit 1
+
+      # GitHub отключает расписания, если в репозитории 60 дней нет коммитов.
+      # Раз в месяц оставляем отметку, чтобы будильник не выключился сам.
+      - id: day
+        run: echo "d=$(date -u +%d)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        if: steps.day.outputs.d == '01' || github.event_name == 'workflow_dispatch'
+
+      - name: Ежемесячная отметка активности
+        if: steps.day.outputs.d == '01' || github.event_name == 'workflow_dispatch'
+        run: |
+          stamp=$(date -u +%Y-%m)
+          if grep -q "$stamp" deploy/heartbeat.txt 2>/dev/null; then
+            echo "отметка за $stamp уже есть"
+            exit 0
+          fi
+          echo "$stamp — будильник работает" >> deploy/heartbeat.txt
+          git config user.name "chess-club-keeper"
+          git config user.email "actions@github.com"
+          git add deploy/heartbeat.txt
+          git commit -m "chore: keep-awake heartbeat $stamp"
+          git push
