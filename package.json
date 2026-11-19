@@ -1,0 +1,24 @@
+{
+  "name": "chess-club-tma",
+  "version": "1.0.0",
+  "description": "Telegram Mini App: chess with bot, friends, lessons and Stars monetization",
+  "type": "module",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "test": "node tests/run.js",
+    "test:e2e": "node tests/e2e.js"
+  },
+  "dependencies": {
+    "chess.js": "^1.0.0",
+    "express": "^4.19.2",
+    "pg": "^8.23.1",
+    "ws": "^8.17.0"
+  },
+  "devDependencies": {
+    "puppeteer": "^24.43.1"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
