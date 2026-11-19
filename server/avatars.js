@@ -40,6 +40,24 @@ export function fallbackAvatar(name = '?') {
   return { buf: Buffer.from(svg, 'utf8'), mime: 'image/svg+xml', ok: false };
 }
 
+// photo_url из Telegram initData (бывает даже когда Bot API фото не отдаёт).
+// Разрешаем только CDN Telegram — иначе это была бы дыра SSRF.
+export function isSafePhotoUrl(url) {
+  try {
+    const u = new URL(String(url));
+    return u.protocol === 'https:' && u.hostname === 't.me' && u.pathname.startsWith('/i/userpic/');
+  } catch { return false; }
+}
+
+async function fetchPhotoUrl(url) {
+  const r = await fetch(url, { signal: AbortSignal.timeout(8000) });
+  if (!r.ok) return null;
+  const buf = Buffer.from(await r.arrayBuffer());
+  if (!buf.length || buf.length > 400000) return null;
+  const mime = /\.svg(\?|$)/i.test(url) ? 'image/svg+xml' : /\.png(\?|$)/i.test(url) ? 'image/png' : 'image/jpeg';
+  return { buf, mime, ok: true };
+}
+
 async function fetchFromTelegram(id) {
   const photos = await tgApi('getUserProfilePhotos', { user_id: Number(id), limit: 1 });
   const sizes = photos?.result?.photos?.[0];
@@ -56,7 +74,7 @@ async function fetchFromTelegram(id) {
   return { buf, mime, ok: true };
 }
 
-export async function getAvatar(id, name = '?') {
+export async function getAvatar(id, name = '?', photoUrl = null) {
   const key = String(id);
   const hit = cache.get(key);
   if (hit && Date.now() - hit.ts < (hit.ok ? TTL_OK : TTL_NO)) return hit;
@@ -68,7 +86,10 @@ export async function getAvatar(id, name = '?') {
   if (inflight.has(key)) return inflight.get(key);
   const job = (async () => {
     let out;
-    try { out = await fetchFromTelegram(key); } catch { out = null; }
+    try {
+      if (photoUrl && isSafePhotoUrl(photoUrl)) out = await fetchPhotoUrl(photoUrl);
+      if (!out) out = await fetchFromTelegram(key);
+    } catch { out = null; }
     const res = { ...(out || fallbackAvatar(name)), ts: Date.now() };
     cache.set(key, res);
     if (cache.size > 500) { // не растим память бесконечно
@@ -80,5 +101,8 @@ export async function getAvatar(id, name = '?') {
   inflight.set(key, job);
   return job;
 }
+
+// Сброс кэша, когда пришла новая ссылка на фото.
+export function invalidateAvatar(id) { cache.delete(String(id)); }
 
 export const avatarCacheSize = () => cache.size;

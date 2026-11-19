@@ -9,7 +9,7 @@ import { ACHIEVEMENTS } from './achievements.js';
 import { delta, scoreOf, K_FRIEND } from './rating.js';
 import * as db from './db.js';
 import { verifyInitData, createStarsInvoice, BOT_TOKEN, DEMO_MODE } from './telegram.js';
-import { getAvatar, checkAvatarSig, fallbackAvatar } from './avatars.js';
+import { getAvatar, checkAvatarSig, fallbackAvatar, isSafePhotoUrl, invalidateAvatar } from './avatars.js';
 import { startBot } from './bot.js';
 import { RoomManager } from './rooms.js';
 
@@ -26,7 +26,8 @@ app.get('/avatar/:id', async (req, res) => {
   const id = String(req.params.id).slice(0, 64);
   if (!checkAvatarSig(id, req.query.s)) return res.status(403).end();
   try {
-    const { buf, mime } = await getAvatar(id, db.peekUser(id)?.name || '?');
+    const u = db.peekUser(id);
+    const { buf, mime } = await getAvatar(id, u?.name || '?', u?.photo_url || null);
     res.set('Content-Type', mime);
     res.set('Cache-Control', 'public, max-age=86400');
     res.send(buf);
@@ -70,6 +71,15 @@ app.get('/api/config', (req, res) => {
 });
 
 app.get('/api/me', (req, res) => res.json({ user: db.publicUser(req.user) }));
+
+// Клиент присылает photo_url из initData — так аватар виден даже у тех,
+// чьи фото скрыты настройками приватности от ботов.
+app.post('/api/me/photo', (req, res) => {
+  const url = String(req.body?.url || '').slice(0, 500);
+  if (!isSafePhotoUrl(url)) return res.status(400).json({ error: 'bad photo url' });
+  if (db.setPhotoUrl(req.user, url)) invalidateAvatar(req.user.id);
+  res.json({ ok: true });
+});
 
 // Создать инвойс Stars. Покупка активируется ботом по successful_payment.
 app.post('/api/invoice', async (req, res) => {

@@ -230,6 +230,12 @@ export function recordLesson(u, lid) {
 // Пользователь без создания записи (для аватаров и публичных данных).
 export const peekUser = id => db.users[String(id)] || null;
 
+// Ссылка на фото из initData клиента (валидируется вызывающей стороной).
+export function setPhotoUrl(u, url) {
+  if (u.photo_url === url) return false;
+  u.photo_url = url; save(); return true;
+}
+
 export const listGames = u => Object.values(db.games).filter(g => g.user === u.id).sort((a, b) => b.ts - a.ts);
 export const getGame = id => db.games[id];
 

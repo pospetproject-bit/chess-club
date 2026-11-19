@@ -7,6 +7,7 @@ export const inTelegram = !!(tg && tg.initData);
 export const tgUser = tg?.initDataUnsafe?.user || null;
 export const initData = tg?.initData || '';
 export const startParam = tg?.initDataUnsafe?.start_param || '';
+export const tgPhotoUrl = tg?.initDataUnsafe?.user?.photo_url || null;
 
 if (tg) {
   try {

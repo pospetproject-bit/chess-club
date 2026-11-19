@@ -1,5 +1,5 @@
 // API-клиент: идентификация (Telegram initData или демо-id), покупки, энтайтлменты.
-import { initData, inTelegram, tgUser, openInvoice, userName, haptic } from './tg.js';
+import { initData, inTelegram, tgUser, tgPhotoUrl, openInvoice, userName, haptic } from './tg.js';
 import { store, toast, modal, confirmModal, sleep } from './util.js';
 
 let demoId = store.get('demo_id');
@@ -26,6 +26,10 @@ async function req(path, opts = {}) {
 export async function init() {
   state.config = await req('/config');
   await refreshMe();
+  // фото профиля из initData — второй источник аватара (Bot API видит не все фото)
+  if (tgPhotoUrl && state.me?.avatar) {
+    req('/me/photo', { method: 'POST', body: { url: tgPhotoUrl } }).catch(() => {});
+  }
 }
 
 export async function refreshMe() {

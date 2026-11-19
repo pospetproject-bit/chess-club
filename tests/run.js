@@ -294,6 +294,10 @@ try {
   ok(/^\/avatar\//.test(meAv.data.user.avatar || ''), 'профиль: ссылка на аватар приходит');
   const lbAv = await j('/api/leaderboard?scope=all');
   ok((lbAv.data.rows || []).length > 0 && (lbAv.data.rows || []).every(r => /^\/avatar\//.test(r.avatar || '')), 'рейтинг: аватары у всех строк');
+  const { isSafePhotoUrl } = await import('../server/avatars.js');
+  ok(isSafePhotoUrl('https://t.me/i/userpic/320/abc.jpg'), 'аватар: ссылка на CDN Telegram разрешена');
+  ok(!isSafePhotoUrl('https://evil.com/x.jpg') && !isSafePhotoUrl('http://t.me/i/userpic/1.jpg') && !isSafePhotoUrl('https://t.me/other/1.jpg'), 'аватар: чужие адреса отклоняются (защита от SSRF)');
+  ok((await j('/api/me/photo', { method: 'POST', body: { url: 'https://evil.com/x.jpg' } })).status === 400, 'аватар: сервер не принимает левую ссылку');
   const avRes = await fetch(base + meAv.data.user.avatar);
   ok(avRes.status === 200 && /image\//.test(avRes.headers.get('content-type') || ''), 'аватар отдаётся картинкой');
   ok((await fetch(base + '/avatar/demo-tester1?s=deadbeefdeadbeef')).status === 403, 'аватар без верной подписи закрыт');
