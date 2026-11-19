@@ -27,8 +27,8 @@ export async function init() {
   state.config = await req('/config');
   await refreshMe();
   // фото профиля из initData — второй источник аватара (Bot API видит не все фото)
-  if (tgPhotoUrl && state.me?.avatar) {
-    req('/me/photo', { method: 'POST', body: { url: tgPhotoUrl } }).catch(() => {});
+  if (inTelegram && state.me?.avatar) {
+    req('/me/photo', { method: 'POST', body: { url: tgPhotoUrl || '' } }).catch(() => {});
   }
 }
 

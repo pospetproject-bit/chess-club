@@ -76,6 +76,10 @@ app.get('/api/me', (req, res) => res.json({ user: db.publicUser(req.user) }));
 // чьи фото скрыты настройками приватности от ботов.
 app.post('/api/me/photo', (req, res) => {
   const url = String(req.body?.url || '').slice(0, 500);
+  if (!url) { // фото в Telegram убрали — чистим кэш и ссылку
+    if (db.setPhotoUrl(req.user, null)) invalidateAvatar(req.user.id);
+    return res.json({ ok: true, cleared: true });
+  }
   if (!isSafePhotoUrl(url)) return res.status(400).json({ error: 'bad photo url' });
   if (db.setPhotoUrl(req.user, url)) invalidateAvatar(req.user.id);
   res.json({ ok: true });
