@@ -26,24 +26,35 @@ export function haptic(kind = 'light') {
 // ---------- реклама (Adsgram — официальный партнёр Telegram Mini Apps) ----------
 let adsControllers = { interstitial: null, rewarded: null };
 let adsgramIds = { interstitial: null, rewarded: null };
-let adsLoaded = false;
+let adsReady = null;
+let lastAdError = null;
+// Debug: в консоли Telegram (Debug Mode) вызови __adsDebug() чтобы увидеть статус SDK и последнюю ошибку.
+window.__adsDebug = () => ({ inTelegram, ids: adsgramIds, interstitial: !!adsControllers.interstitial, rewarded: !!adsControllers.rewarded, lastAdError });
 
 export function initAds(cfg) {
   adsgramIds = cfg || {};
   if (!inTelegram || (!adsgramIds.interstitial && !adsgramIds.rewarded)) return;
-  const s = document.createElement('script');
-  s.src = 'https://sad.adsgram.ai/js/ad.js';
-  s.onload = () => {
-    try {
-      if (adsgramIds.interstitial && window.Adsgram) adsControllers.interstitial = window.Adsgram.init({ blockId: adsgramIds.interstitial });
-      if (adsgramIds.rewarded && window.Adsgram) adsControllers.rewarded = window.Adsgram.init({ blockId: adsgramIds.rewarded });
-      adsLoaded = true;
-    } catch (e) { console.warn('Adsgram init', e); }
-  };
-  document.head.appendChild(s);
+  adsReady = new Promise(resolve => {
+    const s = document.createElement('script');
+    s.src = 'https://sad.adsgram.ai/js/sad.min.js'; // официальный SDK Adsgram
+    s.onload = () => {
+      try {
+        if (adsgramIds.interstitial && window.Adsgram) adsControllers.interstitial = window.Adsgram.init({ blockId: adsgramIds.interstitial });
+        if (adsgramIds.rewarded && window.Adsgram) adsControllers.rewarded = window.Adsgram.init({ blockId: adsgramIds.rewarded });
+      } catch (e) { console.warn('Adsgram init', e); lastAdError = 'init: ' + (e?.message || e); }
+      if (location.search.includes('adsdebug')) toast('Adsgram SDK: ' + (window.Adsgram ? 'загружен' : 'НЕ загружен'), window.Adsgram ? 'ok' : 'err', 4000);
+      resolve();
+    };
+    s.onerror = () => { console.warn('Adsgram SDK не загрузился'); lastAdError = 'SDK load failed'; if (location.search.includes('adsdebug')) toast('Adsgram SDK не загрузился', 'err', 4000); resolve(); };
+    document.head.appendChild(s);
+  });
 }
 
-// Демо-показ «рекламы», когда SDK недоступен (превью вне Telegram)
+async function waitAds() {
+  if (adsReady) await Promise.race([adsReady, sleep(4000)]);
+}
+
+// Демо-показ «рекламы» только ВНЕ Telegram (превью/тесты).
 async function demoAd(kind, seconds = 3) {
   return new Promise(resolve => {
     const m = modal(`<h3>${kind === 'rewarded' ? '🎬 Реклама за награду' : '📺 Реклама'}</h3>
@@ -61,17 +72,30 @@ async function demoAd(kind, seconds = 3) {
 }
 
 export async function showInterstitial() {
+  await waitAds();
   if (adsControllers.interstitial) {
-    try { await adsControllers.interstitial.show(); return true; } catch { return false; }
+    try { await adsControllers.interstitial.show(); return true; }
+    catch (e) { console.warn('Adsgram interstitial:', e?.description || e); lastAdError = 'interstitial: ' + (e?.description || e); return false; }
   }
-  return demoAd('interstitial', 3);
+  if (!inTelegram) return demoAd('interstitial', 3);
+  return false;
 }
 
 export async function showRewarded() {
+  await waitAds();
   if (adsControllers.rewarded) {
-    try { const r = await adsControllers.rewarded.show(); return !!r?.done; } catch { return false; }
+    try {
+      const r = await adsControllers.rewarded.show(); // resolve = досмотрел до конца
+      return r ? !!r.done : true;
+    } catch (e) {
+      console.warn('Adsgram rewarded:', e?.description || e); lastAdError = 'rewarded: ' + (e?.description || e);
+      toast('Реклама сейчас недоступна, попробуйте позже', 'err');
+      return false;
+    }
   }
-  return demoAd('rewarded', 5);
+  if (!inTelegram) return demoAd('rewarded', 5);
+  toast('Реклама сейчас недоступна, попробуйте позже', 'err');
+  return false;
 }
 
 // ---------- оплата Stars ----------
