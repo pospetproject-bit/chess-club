@@ -37,6 +37,12 @@ ok(await page.evaluate(() => {
   return !grid.contains(t) && (grid.compareDocumentPosition(t) & Node.DOCUMENT_POSITION_FOLLOWING) &&
     (t.compareDocumentPosition(tip) & Node.DOCUMENT_POSITION_FOLLOWING);
 }), '«Турнир» — под сеткой режимов и над советом дня');
+const gapHome = await page.evaluate(() => {
+  const t = document.getElementById('btn-tourney').getBoundingClientRect();
+  const tip = document.getElementById('tip-card').getBoundingClientRect();
+  return Math.round(tip.top - t.bottom);
+});
+ok(gapHome >= 12, `«Совет дня» не наползает на «Турнир» (зазор ${gapHome}px)`);
 ok(await visible(page, '#daily-card .daily-card'), 'карточка задачи дня');
 
 console.log('— Партия с ботом —');
@@ -184,6 +190,25 @@ ok((await page.$$('#an-moves .mv-row')).length >= 1, 'размеченный с�
 await page.click('#nav-first');
 await sleep(300);
 ok(await visible(page, '#an-board .board'), 'доска разбора с навигацией');
+const gapAn = await page.evaluate(() => {
+  const nav = document.querySelector('.an-nav').getBoundingClientRect();
+  const ex = document.getElementById('an-explain').getBoundingClientRect();
+  return Math.round(ex.top - nav.bottom);
+});
+ok(gapAn >= 12, `карточка разбора хода не наползает на плеер (зазор ${gapAn}px)`);
+ok(await page.$eval('#an-moves', n => getComputedStyle(n).overflowY === 'auto'), 'список ходов прокручивается внутри себя, а не растягивает страницу');
+const scrollBefore = await page.evaluate(() => {
+  const nav = document.querySelector('.an-nav');
+  window.scrollTo(0, Math.max(0, Math.round(nav.getBoundingClientRect().top + window.scrollY - 480)));
+  return window.scrollY;
+});
+await sleep(200);
+for (const sel of ['#nav-last', '#nav-first', '#nav-next', '#nav-prev']) {
+  await page.evaluate(s => document.querySelector(s).click(), sel);
+  await sleep(250);
+}
+const scrollAfter = await page.evaluate(() => window.scrollY);
+ok(Math.abs(scrollAfter - scrollBefore) <= 1, `плеер не сдвигает страницу (${scrollBefore} → ${scrollAfter})`);
 
 console.log('— Обучение: каталог курсов —');
 await page.evaluate(() => document.querySelector('#tabbar [data-tab="learn"]').click());

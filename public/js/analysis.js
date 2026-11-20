@@ -209,7 +209,7 @@ async function runAnalysis({ pgn, gameId, playerColor, title }) {
       <div class="eval-bar" id="eval-bar"><div class="white-fill" id="eval-fill" style="height:50%"></div></div>
       <div style="flex:1" id="an-board"></div>
     </div>
-    <div class="btn-row" style="margin-top:10px">
+    <div class="btn-row an-nav">
       <button class="btn sm" id="nav-first">⏮</button>
       <button class="btn sm" id="nav-prev">◀</button>
       <button class="btn sm" id="nav-next">▶</button>
@@ -251,7 +251,16 @@ async function runAnalysis({ pgn, gameId, playerColor, title }) {
     movesBox.appendChild(row);
   });
 
+  // Прокручиваем ТОЛЬКО список ходов внутри его коробки — страница остаётся на месте.
+  function keepRowVisible(row) {
+    if (!row) return;
+    const c = movesBox.getBoundingClientRect(), r = row.getBoundingClientRect();
+    if (r.top < c.top + 4) movesBox.scrollTop -= (c.top + 4 - r.top);
+    else if (r.bottom > c.bottom - 4) movesBox.scrollTop += (r.bottom - c.bottom + 4);
+  }
+
   function show() {
+    const keepY = window.scrollY; // экран не должен «прыгать» при перемотке
     const a = annotated[nav.idx];
     const fen = fens[nav.idx + 1];
     board.setPosition(fen);
@@ -264,7 +273,7 @@ async function runAnalysis({ pgn, gameId, playerColor, title }) {
     const cursor = graph.querySelector('#graph-cursor');
     cursor.setAttribute('x1', nav.idx * 10 + 5); cursor.setAttribute('x2', nav.idx * 10 + 5);
     movesBox.querySelectorAll('.mv-row').forEach((r, i) => r.classList.toggle('current', i === nav.idx));
-    movesBox.querySelectorAll('.mv-row')[nav.idx]?.scrollIntoView({ block: 'nearest' });
+    keepRowVisible(movesBox.querySelectorAll('.mv-row')[nav.idx]);
     const ex = body.querySelector('#an-explain');
     const e = a.expl || { title: CLS[a.cls].name, lines: [], better: null };
     const num = (a.i % 2 === 0 ? (a.i / 2 + 1) + '. ' : (a.i / 2 + 0.5 | 0) + '… ');
@@ -278,13 +287,15 @@ async function runAnalysis({ pgn, gameId, playerColor, title }) {
       ${(e.lines || []).map(l => `<p class="ex-line">${esc(l)}</p>`).join('')}
       ${e.better ? `<div class="ex-better"><b>Лучше было ${esc(e.better.san)}</b> ${a.cls !== 'best' ? '<span class="muted">(зелёная стрелка на доске)</span>' : ''}
         ${(e.better.lines || []).map(l => `<p class="ex-line">${esc(l)}</p>`).join('')}</div>` : ''}`;
+    // высота карточки объяснения меняется — возвращаем страницу ровно туда, где она была
+    if (window.scrollY !== keepY) window.scrollTo(0, keepY);
   }
   const momentsBox = body.querySelector('#an-moments');
   if (momentsBox) {
     summary.moments.forEach(mo => {
       const row = el('div', 'moment ' + mo.tone);
       row.innerHTML = `<span class="mo-dot"></span><span>${esc(mo.text)}</span>`;
-      row.onclick = () => { nav.idx = mo.i; show(); sound.click(); body.querySelector('#an-board').scrollIntoView({ block: 'center', behavior: 'smooth' }); };
+      row.onclick = () => { nav.idx = mo.i; show(); sound.click(); };
       momentsBox.appendChild(row);
     });
   }

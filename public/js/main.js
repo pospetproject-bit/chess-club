@@ -246,6 +246,11 @@ async function boot() {
   $('#btn-local').onclick = () => { startLocalGame(); show('game'); };
   $('#btn-learn-home').onclick = () => nav('learn');
   $('#btn-tourney').onclick = () => { openTourneyLobby(); };
+  // широкая карточка — div (кнопка с flex ломает высоту в iOS/Telegram WebView),
+  // поэтому клавиатурную активацию добавляем вручную
+  $('#btn-tourney').onkeydown = e => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openTourneyLobby(); }
+  };
   let connected = false;
   for (let attempt = 1; attempt <= 5 && !connected; attempt++) {
     try {

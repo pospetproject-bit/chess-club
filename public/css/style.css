@@ -545,8 +545,16 @@ input[type=text]:focus { border-color: var(--accent); }
 .store-card { display: flex; flex-direction: column; }
 .store-card .btn { margin-top: auto; }
 
-/* Главная: «Турнир» — широкая кнопка под сеткой режимов, над советом дня */
-.mode-wide { margin: -2px 0 14px; }
-.mode-wide .mode-card { width: 100%; }
+/* Главная: «Турнир» — широкая карточка под сеткой режимов, с воздухом до совета дня */
+.mode-wide { margin: 2px 0 16px; }
+.mode-wide .mode-card { width: 100%; min-height: 74px; }
 .mode-card.wide .mode-texts { display: flex; flex-direction: column; flex: 1; }
 .mode-card.wide .mode-go { color: var(--muted); font-size: 18px; }
+.mode-card[role="button"] { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.mode-card[role="button"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Разбор: плеер и объяснение хода не слипаются, список ходов скроллится сам */
+.an-nav { margin: 12px 0 16px; }
+#an-moves { max-height: 268px; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+#analysis-root { overflow-anchor: none; }
+#an-explain { min-height: 132px; }
