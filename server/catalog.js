@@ -1,6 +1,18 @@
 // Каталог товаров. Цена — в Telegram Stars (XTR).
 // Схема совпадает с server/db.js grant(): premium→days, остальные→grants[]/credit{}.
 
+import { PACKS, LESSONS } from '../public/js/data-lessons.js';
+
+// Курсы— генерируются из единого источника данных уроков.
+const LESSON_PACKS = PACKS.filter(p => !p.free && p.product);
+const LESSON_PRICE = 19;
+const lessonProducts = LESSON_PACKS.map(p => ({
+  id: p.product, type: 'content', stars: LESSON_PRICE, grants: ['lessons:' + p.id],
+  title: 'Курс «' + p.title + '»',
+  desc: p.desc + ' · ' + LESSONS.filter(l => l.pack === p.id).length + ' интерактивных уроков.',
+}));
+const ALL_LESSON_GRANTS = LESSON_PACKS.map(p => 'lessons:' + p.id);
+
 export const CATALOG = [
   // ── Подписка ─────────────────────────────────────────────
   { id: 'premium_30d', type: 'premium', stars: 199, days: 30,
@@ -13,9 +25,9 @@ export const CATALOG = [
     title: 'Без рекламы навсегда', desc: 'Убирает межстраничную рекламу между партиями. Навсегда.' },
 
   { id: 'analysis_1', type: 'consumable', stars: 19, credit: { analysis: 1 },
-    title: 'Разбор партии', desc: 'Глубокий разбор одной вашей партии: график, ошибки, зевок, лучшая линия.' },
+    title: 'Разбор партии с другом', desc: 'Подробный разбор одной партии с другом: где ошибка и почему, что было лучше, объяснение мата и пата. Партии с ботом разбираются бесплатно.' },
   { id: 'analysis_10', type: 'consumable', stars: 99, credit: { analysis: 10 },
-    title: 'Разбор 10 партий', desc: 'Пакет разборов со скидкой 48%.', badge: 'sale' },
+    title: 'Разбор 10 партий с другом', desc: 'Пакет разборов партий с друзьями со скидкой 48%. Разборы с ботом всегда бесплатны.', badge: 'sale' },
 
   { id: 'hints_20', type: 'consumable', stars: 35, credit: { hints: 20 },
     title: '20 подсказок', desc: 'Подсказка показывает лучший ход движка в партии с ботом.' },
@@ -44,16 +56,11 @@ export const CATALOG = [
     grants: ['pieces:ivory', 'pieces:neon', 'pieces:crystal'],
     title: 'Все премиум-фигуры', desc: 'Три набора со скидкой 18%.', badge: 'sale' },
 
-  // ── Уроки (курс «Основы» бесплатный) ─────────────────────
-  { id: 'lessons_openings', type: 'content', stars: 99, grants: ['lessons:openings'],
-    title: 'Курс «Дебюты»', desc: 'Итальянская партия, сицилианская защита, ферзевый гамбит — ход за ходом.' },
-  { id: 'lessons_tactics', type: 'content', stars: 99, grants: ['lessons:tactics'],
-    title: 'Курс «Тактика»', desc: 'Вилки, связки, сквозные удары, матовые конструкции.' },
-  { id: 'lessons_endgame', type: 'content', stars: 99, grants: ['lessons:endgame'],
-    title: 'Курс «Эндшпиль»', desc: 'Правило квадрата, маты ферзём и ладьёй.' },
-  { id: 'lessons_all', type: 'bundle', stars: 249,
-    grants: ['lessons:openings', 'lessons:tactics', 'lessons:endgame'],
-    title: 'Все курсы', desc: 'Три платных курса со скидкой 16%.', badge: 'sale' },
+  // ── Уроки: 16 курсов по 19⭐ (курс «Основы» бесплатный) ───
+  ...lessonProducts,
+  { id: 'lessons_all', type: 'bundle', stars: 149, grants: ALL_LESSON_GRANTS,
+    title: 'Все курсы навсегда', badge: 'sale',
+    desc: '16 курсов и ' + LESSONS.length + ' уроков: дебюты, тактика, эндшпиль, атака, защита, классика. Выгода ' + (LESSON_PACKS.length * LESSON_PRICE - 149) + '⭐.' },
 
   // ── Задачи ───────────────────────────────────────────────
   { id: 'puzzles_pack', type: 'content', stars: 69, grants: ['puzzles:all'],
@@ -67,6 +74,6 @@ export const PREMIUM_GRANTS = [
   'no_ads',
   'board:emerald', 'board:marble', 'board:midnight', 'board:sakura',
   'pieces:ivory', 'pieces:neon', 'pieces:crystal',
-  'lessons:openings', 'lessons:tactics', 'lessons:endgame',
+  ...ALL_LESSON_GRANTS,
   'puzzles:all',
 ];

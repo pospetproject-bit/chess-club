@@ -3,6 +3,7 @@ import { el, esc, toast, store } from './util.js';
 import { state, has, isPremium, purchase } from './api.js';
 import { pieceSVG, PIECE_SETS } from './pieces.js';
 import { sound } from './sound.js';
+import { PACKS, LESSONS } from './data-lessons.js';
 
 const BOARD_THEMES = [
   { id: 'classic', name: 'Классика', free: true },
@@ -86,17 +87,34 @@ export function renderStore() {
   };
 
   // --- анализ и подсказки ---
-  const s1 = section('📊 Разбор партий и подсказки', `Сейчас у вас: разборов — ${me?.analysis_credits ?? 0}, подсказок — ${me?.hints ?? 0}`);
-  wideCard(s1, { ico: '🔍', title: 'Разбор 1 партии', desc: 'График оценки, точность сторон, зевки и лучшие ходы.', product: 'analysis_1' });
+  const s1 = section('📊 Разбор партий и подсказки', `Разбор партий с ботом — бесплатно и без ограничений. Платить нужно только за разбор партий с друзьями. Сейчас у вас: разборов — ${me?.analysis_credits ?? 0}, подсказок — ${me?.hints ?? 0}`);
+  wideCard(s1, { ico: '🔍', title: 'Разбор 1 партии с другом', desc: 'Словами: где ошибка и почему, что было лучше, почему случился мат или пат.', product: 'analysis_1' });
   wideCard(s1, { ico: '📦', title: '10 разборов', desc: 'Пакет со скидкой 48% — для тех, кто растёт всерьёз.', product: 'analysis_10', extra: '<span class="badge green">выгодно</span>' });
   wideCard(s1, { ico: '💡', title: '20 подсказок', desc: 'Лучший ход стрелкой в партии с ботом. +1 бесплатно за просмотр рекламы.', product: 'hints_20' });
 
   // --- обучение ---
-  const s2 = section('🎓 Обучение');
-  wideCard(s2, { ico: '🚀', title: 'Курс «Дебюты»', desc: 'Итальянская, сицилианская, ферзевый гамбит — ход за ходом.', product: 'lessons_openings', ownedKey: 'lessons:openings' });
-  wideCard(s2, { ico: '⚡', title: 'Курс «Тактика»', desc: 'Вилки, связки, сквозные удары, матовые конструкции.', product: 'lessons_tactics', ownedKey: 'lessons:tactics' });
-  wideCard(s2, { ico: '👑', title: 'Курс «Эндшпиль»', desc: 'Правило квадрата, маты ферзём и ладьёй.', product: 'lessons_endgame', ownedKey: 'lessons:endgame' });
-  wideCard(s2, { ico: '🎁', title: 'Все курсы', desc: 'Три курса одним пакетом со скидкой.', product: 'lessons_all', ownedKey: 'lessons:openings', extra: '<span class="badge green">−16%</span>' });
+  const paidPacks = PACKS.filter(p => !p.free && p.product);
+  const s2 = section('🎓 Обучение', `${PACKS.length} курсов · ${LESSONS.length} интерактивных уроков. Курс «Основы» — бесплатно.`);
+  wideCard(s2, {
+    ico: '🎁', title: 'Все курсы навсегда',
+    desc: `${paidPacks.length} курсов и ${LESSONS.length} уроков: дебюты, тактика, эндшпиль, атака, защита, позиционная игра и разбор шедевров классики.`,
+    product: 'lessons_all', ownedKey: 'lessons:classics',
+    extra: `<span class="badge green">выгода ${paidPacks.length * 19 - 149} ⭐</span>`,
+  });
+  const g2 = el('div', 'store-grid');
+  for (const p of paidPacks) {
+    const owned = has('lessons:' + p.id);
+    const c = el('div', 'store-card');
+    c.innerHTML = `<div class="s-ico">${p.ico}</div><div class="s-title">${esc(p.title)}</div>
+      <div class="muted" style="font-size:11.5px;margin-bottom:8px">${LESSONS.filter(l => l.pack === p.id).length} уроков</div>`;
+    c.appendChild(buyBtn(p.product, 'lessons:' + p.id, '✓ Куплен'));
+    g2.appendChild(c);
+  }
+  s2.appendChild(g2);
+  const openLearn = el('button', 'btn block sm', 'Открыть каталог уроков →');
+  openLearn.style.marginTop = '10px';
+  openLearn.onclick = () => window.__cc_nav('learn');
+  s2.appendChild(openLearn);
   wideCard(s2, { ico: '🧩', title: 'Тактика+ (12 задач)', desc: 'Вся библиотека задач. Задача дня — всегда бесплатно.', product: 'puzzles_pack', ownedKey: 'puzzles:all' });
 
   // --- доски ---

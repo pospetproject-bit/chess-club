@@ -11,6 +11,7 @@ import { renderStore } from './store.js';
 import { openAnalysisFlow } from './analysis.js';
 import { renderRating } from './rating.js';
 import { renderAchievementsGrid } from './achievements.js';
+import { openTourneyLobby, openTournament, renderTourneyBanner, closeTourneyConn } from './tourney.js';
 
 const MAIN_SCREENS = ['home', 'learn', 'puzzles', 'rating', 'store', 'profile'];
 let currentScreen = 'home';
@@ -25,6 +26,7 @@ export function show(name) {
 
 export function nav(tab) {
   backButton(false, () => {});
+  closeTourneyConn();
   if (tab === 'home') renderHome();
   if (tab === 'learn') renderLearn();
   if (tab === 'puzzles') renderPuzzles();
@@ -72,6 +74,8 @@ function renderHome() {
     };
     rc.appendChild(card);
   }
+  // турнирный баннер (моя пара готова / идёт набор)
+  renderTourneyBanner($('#tour-banner'));
   // задача дня
   const dc = $('#daily-card');
   const p = dailyPuzzle();
@@ -205,7 +209,7 @@ async function renderProfile() {
         <div class="grow"><b>${modeName}</b> ${badge}<div class="h-sub">${fmtDate(g.ts)}</div></div>
         <button class="btn sm ${g.analyzed ? '' : 'primary'}" data-an>${g.analyzed ? '📊 Разбор' : '📊 Разобрать'}</button>
         <button class="btn sm ghost" data-pgn>📋</button>`;
-      item.querySelector('[data-an]').onclick = () => openAnalysisFlow({ pgn: g.pgn, gameId: g.id, playerColor: g.player_color, title: 'Разбор партии' });
+      item.querySelector('[data-an]').onclick = () => openAnalysisFlow({ pgn: g.pgn, gameId: g.id, playerColor: g.player_color, title: 'Разбор партии', free: g.mode === 'bot' || g.mode === 'local' });
       item.querySelector('[data-pgn]').onclick = async () => { await copyText(g.pgn); toast('PGN скопирован', 'ok'); };
       h.appendChild(item);
     }
@@ -241,6 +245,7 @@ async function boot() {
   $('#btn-friend').onclick = () => { openFriendLobby(); show('room'); };
   $('#btn-local').onclick = () => { startLocalGame(); show('game'); };
   $('#btn-learn-home').onclick = () => nav('learn');
+  $('#btn-tourney').onclick = () => { openTourneyLobby(); };
   let connected = false;
   for (let attempt = 1; attempt <= 5 && !connected; attempt++) {
     try {
@@ -264,10 +269,15 @@ async function boot() {
   // deep link приглашения
   const hashJoin = location.hash.match(/join=([A-Z0-9]{4,6})/i)?.[1];
   const joinCode = (startParam || '').startsWith('join_') ? startParam.slice(5) : hashJoin;
+  const hashTour = location.hash.match(/tour=([A-Z0-9]{4,6})/i)?.[1];
+  const tourCode = (startParam || '').startsWith('tour_') ? startParam.slice(5) : hashTour;
   // deep link вкладки из меню бота (#tab=rating или startapp=rating)
   const hashTab = location.hash.match(/tab=([a-z]+)/)?.[1];
   const tabParam = ['home', 'learn', 'puzzles', 'rating', 'store', 'profile'].includes(startParam) ? startParam : hashTab;
-  if (joinCode) {
+  if (startParam === 'tourney' || hashTab === 'tourney') { openTourneyLobby(); return; }
+  if (tourCode) {
+    openTournament(tourCode.toUpperCase(), true);
+  } else if (joinCode) {
     openFriendLobby(joinCode.toUpperCase());
     show('room');
   } else if (api.state.config && pendingFriendSession()) {

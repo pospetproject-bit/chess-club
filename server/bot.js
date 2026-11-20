@@ -21,7 +21,8 @@ function menuKeyboard() {
   return {
     inline_keyboard: [
       [b('♟ Играть', 'home')],
-      [b('🏆 Рейтинг', 'rating'), b('🎓 Уроки', 'learn')],
+      [{ text: '🏆 Турнир с друзьями', web_app: { url: webappButtonUrl('tourney') } }],
+      [b('📊 Рейтинг', 'rating'), b('🎓 Уроки', 'learn')],
       [b('🧩 Задачи', 'puzzles'), b('⭐ Магазин', 'store')],
       [b('👤 Профиль', 'profile')],
       [{ text: 'ℹ️ Помощь', callback_data: 'help' }],
@@ -33,9 +34,10 @@ const WELCOME = `♛ <b>Шахматный Клуб</b>
 <i>Элегантные шахматы внутри Telegram</i>
 
 ♟ Партии с ботом и с друзьями по ссылке
-🏆 Рейтинг Elo и таблица лидеров клуба
-⏱ Шахматные часы и разбор каждой партии
-🎓 Интерактивные курсы и задача дня
+🏆 Турниры на 4 / 8 / 16 игроков с живой сеткой
+📊 Рейтинг Elo и таблица лидеров клуба
+🔍 Разбор партий с ботом — бесплатно и словами: где ошибка и почему
+🎓 17 курсов и 103 интерактивных урока
 🎖 Достижения, премиум-доски и фигуры
 
 Выберите раздел ниже — или откройте клуб и сыграйте первую партию. Ваш рейтинг уже ждёт.`;
@@ -77,9 +79,23 @@ async function handleMessage(msg) {
         parse_mode: 'HTML',
         reply_markup: playKeyboard('join_' + code),
       });
+    } else if (param.startsWith('tour_')) {
+      const id = param.slice(5);
+      await tgApi('sendMessage', {
+        chat_id: chatId,
+        text: `🏆 <b>Вас пригласили на турнир!</b>\nКод: <code>${id}</code>\n\nОткройте приложение — сетка и ваша пара уже ждут.`,
+        parse_mode: 'HTML',
+        reply_markup: playKeyboard('tour_' + id),
+      });
     } else {
       await tgApi('sendMessage', { chat_id: chatId, text: WELCOME, parse_mode: 'HTML', reply_markup: menuKeyboard() });
     }
+  } else if (text.startsWith('/tourney') || text.startsWith('/tournament')) {
+    await tgApi('sendMessage', {
+      chat_id: chatId, parse_mode: 'HTML',
+      text: '🏆 <b>Турниры</b> — создайте кубок на 4, 8 или 16 игроков, отправьте друзьям ссылку и следите за сеткой: кто прошёл дальше, кто вылетел и кто чемпион.',
+      reply_markup: { inline_keyboard: [[{ text: 'Открыть турниры', web_app: { url: webappButtonUrl('tourney') } }]] },
+    });
   } else if (TAB_CMD[text.split(' ')[0]]) {
     const tab = TAB_CMD[text.split(' ')[0]];
     await tgApi('sendMessage', {
@@ -89,7 +105,7 @@ async function handleMessage(msg) {
   } else if (text.startsWith('/help')) {
     await tgApi('sendMessage', {
       chat_id: chatId, parse_mode: 'HTML',
-      text: `Как играть:\n1. Откройте мини-апп кнопкой в /start\n2. «С ботом» — выберите уровень\n3. «С другом» — создайте комнату и отправьте ссылку другу\n\nПокупки оплачиваются Telegram Stars ⭐. Вопросы по оплате: /paysupport`,
+      text: `Как играть:\n1. Откройте мини-апп кнопкой в /start\n2. «С ботом» — выберите уровень; разбор такой партии бесплатный\n3. «С другом» — создайте комнату и отправьте ссылку другу\n4. «Турнир» — кубок на 4/8/16 игроков с сеткой на выбывание\n5. «Уроки» — 17 курсов: основы бесплатно, остальные по 19 ⭐\n\nПокупки оплачиваются Telegram Stars ⭐. Вопросы по оплате: /paysupport`,
     });
   } else if (text.startsWith('/paysupport')) {
     await tgApi('sendMessage', {
@@ -140,6 +156,7 @@ export async function startBot() {
       commands: [
         { command: 'start', description: 'Главное меню клуба' },
         { command: 'play', description: 'Играть с ботом или другом' },
+        { command: 'tourney', description: 'Турнир с друзьями: сетка на 4/8/16' },
         { command: 'rating', description: 'Рейтинг и таблица лидеров' },
         { command: 'learn', description: 'Интерактивные уроки' },
         { command: 'puzzles', description: 'Задача дня и тактика' },

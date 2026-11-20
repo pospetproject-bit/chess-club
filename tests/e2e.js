@@ -27,7 +27,7 @@ const text = (p, sel) => p.$eval(sel, n => n.textContent).catch(() => '');
 
 console.log('— Главная —');
 ok(await visible(page, '#btn-bot'), 'главная отрендерилась, кнопка «С ботом» видна');
-ok((await page.$$('#screen-home .mode-card')).length === 4, '4 режима на главной');
+ok((await page.$$('#screen-home .mode-card')).length === 5, '5 режимов на главной (включая турнир)');
 ok(await visible(page, '#daily-card .daily-card'), 'карточка задачи дня');
 
 console.log('— Партия с ботом —');
@@ -175,6 +175,68 @@ ok((await page.$$('#an-moves .mv-row')).length >= 1, 'размеченный с�
 await page.click('#nav-first');
 await sleep(300);
 ok(await visible(page, '#an-board .board'), 'доска разбора с навигацией');
+
+console.log('— Обучение: каталог курсов —');
+await page.evaluate(() => document.querySelector('#tabbar [data-tab="learn"]').click());
+await sleep(700);
+ok((await page.$$('#learn-list .pack-card')).length === 17, '17 курсов в каталоге');
+ok((await page.$$('#learn-list .chip')).length === 6, 'фильтры разделов на месте');
+const bundleTxt = await text(page, '#learn-list .bundle-card');
+ok(bundleTxt ? (/149/.test(bundleTxt) && /103/.test(bundleTxt)) : true,
+  bundleTxt ? 'пакет всех курсов: 149⭐ за 103 урока' : 'премиум — пакет курсов не предлагается');
+await page.evaluate(() => [...document.querySelectorAll('#learn-list .chip')].find(c => c.textContent === 'Эндшпиль').click());
+await sleep(400);
+ok((await page.$$('#learn-list .pack-card')).length === 3, 'фильтр «Эндшпиль» показывает 3 курса');
+await page.evaluate(() => [...document.querySelectorAll('#learn-list .chip')].find(c => c.textContent === 'Все').click());
+await sleep(400);
+await page.evaluate(() => [...document.querySelectorAll('#learn-list .pack-card')].find(n => n.textContent.includes('Матовые')).click());
+await sleep(500);
+await page.evaluate(() => document.querySelector('.modal [data-a=yes]')?.click());
+await sleep(1200);
+ok((await page.$$('#learn-list .lesson-item')).length === 8, 'покупка курса открывает 8 уроков');
+await page.evaluate(() => document.querySelector('#learn-list .lesson-item').click());
+await sleep(900);
+ok(await visible(page, '#ls-board .board'), 'урок открылся с доской');
+ok((await text(page, '#ls-text')).length > 20, 'текст урока показан');
+
+console.log('— Турниры —');
+await page.evaluate(() => window.__cc_nav('home'));
+await sleep(500);
+ok(await visible(page, '#btn-tourney'), 'кнопка «Турнир» на главной');
+await page.evaluate(() => document.querySelector('#btn-tourney').click());
+await sleep(700);
+ok(await visible(page, '#tr-create'), 'лобби турниров открылось');
+await page.evaluate(() => {
+  document.querySelector('#tr-name').value = 'E2E Кубок';
+  document.querySelector('#tr-size .choice[data-v="8"]').click();
+  document.querySelector('#tr-tc .choice[data-v="none"]').click();
+});
+await page.evaluate(() => document.querySelector('#tr-create').click());
+await sleep(1500);
+const tcode = await text(page, '.tour-code.big');
+ok(/^T[A-Z0-9]{4}$/.test(tcode), 'турнир создан, код показан: ' + tcode);
+ok((await page.$$('.tp-row')).length === 8, 'список участников на 8 мест');
+ok(await visible(page, '#t-share'), 'кнопка приглашения друзей');
+// второй игрок заходит по коду в отдельном контексте
+const tctx = await browser.createBrowserContext();
+const tp2 = await tctx.newPage();
+await tp2.setViewport({ width: 420, height: 900 });
+tp2.on('pageerror', e => errors.push('tp2: ' + e.message));
+await tp2.goto(BASE, { waitUntil: 'networkidle2' });
+await tp2.evaluate(() => { localStorage.setItem('cc_demo_id', JSON.stringify('e2e-tour-2')); localStorage.setItem('cc_demo_name', JSON.stringify('Соперник')); });
+await tp2.reload({ waitUntil: 'networkidle2' });
+await sleep(900);
+await tp2.evaluate(async c => { const { openTournament } = await import('/js/tourney.js'); openTournament(c, true); }, tcode);
+await sleep(1500);
+ok(/2\/8/.test(await text(tp2, '.tour-head .th-row')), 'второй игрок видит турнир и счёт 2/8');
+await page.evaluate(() => document.querySelector('#t-start')?.click());
+await sleep(1500);
+ok((await page.$$('.br-col')).length === 3, 'сетка на 8: три раунда');
+ok((await page.$$('.br-match')).length === 7, 'в сетке 7 матчей (4+2+1)');
+ok((await page.$$('.br-slot.win')).length >= 1, 'проходы (bye) отмечены как победы');
+await sleep(300);
+ok(await visible(page, '#t-play') || await visible(tp2, '#t-play'), 'кнопка «Играть» у готовой пары');
+await tctx.close();
 
 console.log('— Ошибки консоли —');
 const realErrors = errors.filter(e => !e.includes('favicon') && !e.includes('telegram.org') && !e.includes('net::ERR'));

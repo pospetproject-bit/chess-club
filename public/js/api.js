@@ -102,4 +102,5 @@ export const api = {
   leaderboard: scope => req('/leaderboard?scope=' + (scope || 'all')),
   puzzleSolved: id => req('/puzzles/solved', { method: 'POST', body: { id } }),
   lessonDone: id => req('/lessons/done', { method: 'POST', body: { id } }),
+  tournaments: () => req('/tournaments'),
 };

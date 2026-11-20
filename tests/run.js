@@ -5,6 +5,8 @@ import { PUZZLES } from '../public/js/data-puzzles.js';
 import { bestMove, analyzeFen } from '../public/js/engine.js';
 import { CATALOG, byId, PREMIUM_GRANTS } from '../server/catalog.js';
 import { adOutcome } from '../public/js/ads-result.js';
+import { explainMove, explainMate, explainStalemate, explainEnd, summarize } from '../public/js/explain.js';
+import { seedOrder, makeBracket, nextSlot, roundTitle, byeWinner, matchPlayable } from '../server/tournaments.js';
 import { spawn } from 'node:child_process';
 import WebSocket from 'ws';
 
@@ -100,6 +102,52 @@ ok(new Set(CATALOG.map(p => p.id)).size === CATALOG.length, 'id товаров �
 ok(CATALOG.filter(p => p.type === 'premium').length === 1, 'ровно один премиум-продукт');
 ok(PREMIUM_GRANTS.includes('no_ads'), 'премиум отключает рекламу');
 
+console.log('— Разбор: объяснения словами —');
+{
+  const mk = (sans, fromFen) => { const c = fromFen ? new Chess(fromFen) : new Chess(); for (const x of sans) c.move(x); return c; };
+  // детский мат
+  const c = mk(['e4', 'e5', 'Bc4', 'Nc6', 'Qh5', 'Nf6']);
+  const before = c.fen(); const mv = c.move('Qxf7#'); const after = c.fen();
+  const ex = explainMove({ fenBefore: before, fenAfter: after, move: mv, best: null, scoreBefore: 9900, scoreAfter: 10000, cls: 'best', loss: 0, reply: null });
+  ok(/Мат/.test(ex.title), 'объяснение: мат распознан');
+  ok(ex.lines.join(' ').includes('ферзь на f7'), 'объяснение: назван шахующий ферзь');
+  ok(ex.lines.join(' ').includes('своя'), 'объяснение: сказано, что свои фигуры мешают королю');
+  // мат по последней горизонтали
+  const br = new Chess('6k1/5ppp/8/8/8/8/8/4R2K w - - 0 1');
+  const brb = br.fen(); const brm = br.move('Re8#');
+  const bre = explainMate(br.fen(), 'w');
+  ok(bre.lines.join(' ').includes('последней горизонтали'), 'объяснение: узнан мат по последней горизонтали');
+  ok(bre.lines.join(' ').includes('форточку'), 'объяснение: дан совет как предотвращать');
+  // спёртый мат
+  const sm = new Chess('6rk/6pp/8/6N1/8/8/8/6K1 w - - 0 1');
+  sm.move('Nf7#');
+  ok(explainMate(sm.fen(), 'w').lines.join(' ').includes('спёртый'), 'объяснение: узнан спёртый мат');
+  // пат
+  const st = new Chess('7k/5Q2/6K1/8/8/8/8/8 b - - 0 1');
+  ok(st.isStalemate(), 'позиция пата корректна');
+  const ste = explainStalemate(st.fen());
+  ok(ste.lines.join(' ').includes('ничья') && ste.lines.join(' ').includes('НЕ под шахом'), 'объяснение: пат описан верно');
+  ok(explainEnd({ fen: st.fen(), reason: 'stalemate', result: 'draw', playerColor: 'w' }).title.includes('пат'), 'итог партии: пат');
+  // зевок с матом соперника
+  const bl = mk(['e4', 'e5', 'Bc4', 'Nc6', 'Qh5']);
+  const blb = bl.fen(); const blm = bl.move('Nf6'); const bla = bl.fen();
+  const ble = explainMove({ fenBefore: blb, fenAfter: bla, move: blm, best: { san: 'Qe7' }, scoreBefore: 30, scoreAfter: -9999, cls: 'blunder', loss: 1000, reply: { san: 'Qxf7#' } });
+  ok(ble.lines.join(' ').includes('матует'), 'объяснение: сказано, что соперник матует');
+  ok(!ble.lines.join(' ').includes('##'), 'объяснение: нет двойного решётки в SAN');
+  ok(ble.lines.join(' ').includes('партия проиграна'), 'объяснение: итог — проигрыш, а не «пешки»');
+  ok(ble.better && ble.better.san === 'Qe7', 'объяснение: предложен лучший ход');
+  ok(ble.better.lines.join(' ').includes('предотвращает мат'), 'объяснение: лучший ход предотвращает мат');
+  // хороший ход с развитием
+  const gd = new Chess(); const gdb = gd.fen(); const gdm = gd.move('Nf3');
+  const gde = explainMove({ fenBefore: gdb, fenAfter: gd.fen(), move: gdm, best: { san: 'Nf3' }, scoreBefore: 20, scoreAfter: 25, cls: 'best', loss: 0, reply: null });
+  ok(gde.lines.join(' ').includes('развивает'), 'объяснение: развитии фигуры сказано');
+  // советы по партии
+  const fake = [{ i: 5, mover: 'b', cls: 'blunder', acc: 40, m: { san: 'Nf6' }, scoreBefore: 30, expl: { lines: ['После этого хода соперник матует в 1.'] } }];
+  const sum = summarize(fake, null, 'b');
+  ok(sum.tips.join(' ').includes('пропустил мат'), 'советы: пропущенный мат отмечен');
+  ok(sum.moments[0].text.startsWith('3…'), 'советы: номер хода чёрных оформлен как 3…');
+}
+
 console.log('— Реклама: разбор ответов Adsgram —');
 {
   const R = d => ({ description: d, state: 'destroy', error: false, done: true });
@@ -149,6 +197,33 @@ console.log('— Рейтинг и достижения —');
 }
 
 // ---------- сервер ----------
+console.log('— Турниры: логика сетки —');
+ok(seedOrder(4).join(',') === '1,4,2,3', 'посев на 4: 1-4, 2-3');
+ok(seedOrder(8).join(',') === '1,8,4,5,2,7,3,6', 'посев на 8 классический');
+ok(seedOrder(16).length === 16 && seedOrder(16)[0] === 1 && seedOrder(16)[1] === 16, 'посев на 16');
+{
+  const players = Array.from({ length: 8 }, (_, i) => ({ id: 'p' + i, name: 'И' + i, rating: 1600 - i * 50 }));
+  const b = makeBracket(players, 8);
+  ok(b.length === 3 && b[0].length === 4 && b[1].length === 2 && b[2].length === 1, 'сетка 8: 3 раунда 4/2/1');
+  ok(b[0][0].a.id === 'p0' && b[0][0].b.id === 'p7', 'сильнейший играет со слабейшим');
+  ok(b[2][0].a === null && b[2][0].b === null, 'финал пуст до результатов');
+  const n = nextSlot(0, 3);
+  ok(n.round === 1 && n.idx === 1 && n.side === 'b', 'победитель матча 3 идёт в полуфинал 2, слот b');
+  ok(roundTitle(8, 0) === '1/4 финала' && roundTitle(8, 2) === 'Финал', 'названия раундов');
+}
+{
+  const b = makeBracket([{ id: 'a', rating: 1500 }, { id: 'b', rating: 1400 }, { id: 'c', rating: 1300 }], 8);
+  ok(b[0].filter(m => matchPlayable(m)).length === 0, 'при 3 игроках из 8 первый круг — одни проходы');
+  ok(b[0][2].a.id === 'b' && b[0][3].a.id === 'c', 'сеяные 2 и 3 встретятся в полуфинале');
+  ok(byeWinner(b[0][0])?.id === 'a', 'одиночный игрок проходит без игры (bye)');
+  ok(byeWinner(b[0][1]) === null, 'пустая ветка не даёт победителя');
+}
+{
+  // двое в сетке на 4: оба получают проход и встречаются сразу в финале
+  const b = makeBracket([{ id: 'a', rating: 1500 }, { id: 'b', rating: 1400 }], 4);
+  ok(b[0][0].a.id === 'a' && !b[0][0].b && b[0][1].a.id === 'b' && !b[0][1].b, 'двое в сетке на 4 — оба с проходом в финал');
+}
+
 console.log('— Сервер: API + WebSocket —');
 // чистое состояние БД для детерминированных тестов (персистентность — фича, не баг)
 import fs from 'node:fs';
@@ -207,9 +282,17 @@ try {
     const r = await fetch(base + path, { ...opts, headers: H2, body: opts.body ? JSON.stringify(opts.body) : undefined });
     return r.json();
   };
+  // разбор партии с ботом — бесплатный, кредиты не тратятся
   const g2 = await j2('/api/games', { method: 'POST', body: { mode: 'bot', result: 'b', player_color: 'w', pgn: '1. f3 e5 2. g4 Qh4#' } });
   const un2 = await j2('/api/analysis/unlock', { method: 'POST', body: { gameId: g2.game.id } });
-  ok(un2.ok && un2.user.analysis_credits === 0, 'кредит разбора списывается');
+  ok(un2.ok && un2.free === true && un2.user.analysis_credits === 1, 'разбор с ботом бесплатный, кредит цел');
+  ok(un2.game.analyzed, 'бесплатный разбор помечается как разобранный');
+  // партия с другом — по-прежнему за кредит
+  const g2f = await j2('/api/games', { method: 'POST', body: { mode: 'friend', result: 'b', player_color: 'w', pgn: '1. f3 e5 2. g4 Qh4#' } });
+  const un2f = await j2('/api/analysis/unlock', { method: 'POST', body: { gameId: g2f.game.id } });
+  ok(un2f.ok && un2f.user.analysis_credits === 0, 'разбор партии с другом списывает кредит');
+  const g2l = await j2('/api/games', { method: 'POST', body: { mode: 'local', result: 'w', player_color: 'w', pgn: '1. e4 e5' } });
+  ok((await j2('/api/analysis/unlock', { method: 'POST', body: { gameId: g2l.game.id } })).free === true, 'разбор «вдвоём рядом» тоже бесплатный');
   const un3 = await j2('/api/analysis/unlock', { method: 'POST', body: { gameId: g2.game.id } });
   ok(un3.ok, 'повторный разбор той же партии бесплатен');
   const me2 = await j2('/api/me');
@@ -344,9 +427,82 @@ try {
   const F2 = await mkClient('F2');
   F2.send({ t: 'join', code: crF.code, userId: 'uf', name: 'Дана' });
   ok((await F2.wait(m => m.t === 'joined')).color === 'b', 'комната ожидания жива после вылета создателя');
-  for (const cl of [C, C2, D, E, F2]) { try { cl.ws.close(); } catch {} }
+  // ── Турнир на 4 игроков: набор → посев → партии → чемпион ──
+  const T1 = await mkClient('T1'), T2 = await mkClient('T2'), T3 = await mkClient('T3'), T4 = await mkClient('T4');
+  T1.send({ t: 't_create', userId: 't1', name: 'Орг', title: 'Кубок теста', size: 4, tc: 'none', rated: false });
+  const tCreated = await T1.wait(m => m.t === 't_created');
+  ok(/^T[A-Z0-9]{4}$/.test(tCreated.id), 'турнир создан с кодом TXXXX');
+  const tState0 = await T1.wait(m => m.t === 't_state');
+  ok(tState0.status === 'registration' && tState0.players.length === 1 && tState0.isOwner, 'организатор — первый участник');
+  for (const [cl, uid, nm] of [[T2, 't2', 'Игрок 2'], [T3, 't3', 'Игрок 3'], [T4, 't4', 'Игрок 4']]) {
+    cl.send({ t: 't_join', id: tCreated.id, userId: uid, name: nm });
+    await cl.wait(m => m.t === 't_state' && m.players.length >= 2);
+  }
+  const tFull = await T1.wait(m => m.t === 't_state' && m.players.length === 4);
+  ok(tFull.players.length === 4, 'набор заполнен');
+  T2.send({ t: 't_start', id: tCreated.id, userId: 't2', name: 'Игрок 2' });
+  ok(/только организатор/.test((await T2.wait(m => m.t === 'error')).message), 'запустить может только организатор');
+  T1.send({ t: 't_start', id: tCreated.id, userId: 't1', name: 'Орг' });
+  const tRun = await T1.wait(m => m.t === 't_state' && m.status === 'running');
+  ok(tRun.rounds.length === 2 && tRun.rounds[0].length === 2, 'сетка на 4: полуфиналы и финал');
+  ok(tRun.rounds[0].every(m => m.status === 'ready'), 'обе пары готовы к игре');
+  // находим пары игроков
+  const pairOf = uid => tRun.rounds[0].find(m => m.a?.id === uid || m.b?.id === uid);
+  const clients = { t1: T1, t2: T2, t3: T3, t4: T4 };
+  const playMatch = async (match, winnerUid) => {
+    const uids = [match.a.id, match.b.id];
+    const rooms = {};
+    for (const uid of uids) {
+      clients[uid].send({ t: 't_play', id: tCreated.id, userId: uid, name: uid });
+      rooms[uid] = await clients[uid].wait(m => m.t === 't_room');
+    }
+    ok(rooms[uids[0]].code === rooms[uids[1]].code, 'оба игрока попали в одну комнату');
+    // входим в комнату как в обычной партии с другом
+    const gs = {};
+    for (const uid of uids) clients[uid].send({ t: 'join', code: rooms[uid].code, userId: uid, name: uid });
+    for (const uid of uids) gs[uid] = await clients[uid].wait(m => m.t === 'state' && m.status === 'active');
+    ok(gs[uids[0]].meta?.tournament === tCreated.id, 'партия помечена как турнирная');
+    // сдача: проигрывает тот, кто не winnerUid
+    const loser = uids.find(u => u !== winnerUid);
+    clients[loser].send({ t: 'resign' });
+    const over = await clients[winnerUid].wait(m => m.t === 'state' && m.status === 'over');
+    ok(over.result === over.you, 'победа в турнирной партии зафиксирована');
+    return over;
+  };
+  const semi1 = pairOf('t1');
+  const semi1Winner = semi1.a.id; // победит первый сеяный
+  await playMatch(semi1, semi1Winner);
+  const afterSemi1 = await T1.wait(m => m.t === 't_state' && m.rounds?.[0]?.[semi1.idx]?.status === 'over');
+  ok(afterSemi1.rounds[0][semi1.idx].winner === semi1Winner, 'победитель полуфинала записан');
+  const semi2 = tRun.rounds[0].find(m => m.idx !== semi1.idx);
+  const semi2Winner = semi2.b.id;
+  await playMatch(semi2, semi2Winner);
+  const afterSemi2 = await T1.wait(m => m.t === 't_state' && m.rounds?.[1]?.[0]?.a && m.rounds?.[1]?.[0]?.b);
+  ok(afterSemi2.rounds[1][0].a.id === semi1Winner && afterSemi2.rounds[1][0].b.id === semi2Winner, 'оба финалиста определены');
+  ok(afterSemi2.rounds[1][0].status === 'ready', 'финал готов к игре');
+  await playMatch(afterSemi2.rounds[1][0], semi2Winner);
+  const tDone = await T1.wait(m => m.t === 't_state' && m.status === 'finished');
+  ok(tDone.champion?.id === semi2Winner, 'чемпион турнира определён');
+  ok(tDone.rounds[1][0].winner === semi2Winner, 'финал отмечен в сетке');
+  // ── Турнир на 8 с двумя игроками: каскад проходов до финала ──
+  const S1 = await mkClient('S1'), S2 = await mkClient('S2');
+  S1.send({ t: 't_create', userId: 's1', name: 'Соло 1', title: 'Малый кубок', size: 8, tc: 'none', rated: false });
+  const smallId = (await S1.wait(m => m.t === 't_created')).id;
+  S2.send({ t: 't_join', id: smallId, userId: 's2', name: 'Соло 2' });
+  await S2.wait(m => m.t === 't_state' && m.players.length === 2);
+  S1.send({ t: 't_start', id: smallId, userId: 's1', name: 'Соло 1' });
+  const smallRun = await S1.wait(m => m.t === 't_state' && m.status === 'running');
+  ok(smallRun.rounds.length === 3, 'сетка на 8 построена');
+  ok(smallRun.rounds[2][0].a?.id && smallRun.rounds[2][0].b?.id, 'двое участников сразу дошли до финала через проходы');
+  ok(smallRun.rounds[2][0].status === 'ready', 'финал готов к игре');
+  ok(smallRun.myMatch?.id === smallRun.rounds[2][0].id, 'игроку показана его финальная пара');
+  for (const cl of [S1, S2]) { try { cl.ws.close(); } catch {} }
+
+  const tList = await j('/api/tournaments');
+  ok(Array.isArray(tList.data.items), 'REST /api/tournaments отвечает');
+  for (const cl of [C, C2, D, E, F2, T1, T2, T3, T4]) { try { cl.ws.close(); } catch {} }
 } catch (e) {
-  fail++; console.error('  ✗ FAIL: серверный тест —', e.message);
+  fail++; console.error('  ✗ FAIL: серверный тест —', e.message, '\n', (e.stack||'').split('\n').slice(1,4).join('\n'));
   console.error(serverLog.slice(-2000));
 } finally {
   child.kill('SIGTERM'); // graceful: сервер сбрасывает данные перед выходом

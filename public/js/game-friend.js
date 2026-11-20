@@ -58,7 +58,7 @@ export function openFriendLobby(prefillCode = '') {
 // ---------- соединение ----------
 // Реконнект бесконечный (с затуханием), плюс мгновенный возврат при
 // разблокировке телефона/возврате в приложение — раньше было всего 6 попыток.
-class Conn {
+export class Conn {
   constructor(onMsg, onStatus, initial = null) {
     this.onMsg = onMsg; this.onStatus = onStatus;
     this.closed = false; this.tries = 0; this.joinInfo = null; this.timer = null;
@@ -101,7 +101,7 @@ class Conn {
   // initData подписан Telegram — сервер берёт личность из него, а не из слова клиента.
   send(m) {
     if (this.ws?.readyState !== 1) return;
-    const payload = (m.t === 'create' || m.t === 'join') ? { ...m, initData } : m;
+    const payload = (m.t === 'create' || m.t === 'join' || String(m.t).startsWith('t_')) ? { ...m, initData } : m;
     this.ws.send(JSON.stringify(payload));
   }
   detach() {
@@ -177,6 +177,8 @@ function createRoom({ color, tc, rated = true }) {
     root.querySelector('#w-copy').onclick = async () => { await copyText(link); toast('Ссылка скопирована', 'ok'); };
   }
 }
+
+export function joinRoomByCode(code, resume = false) { return joinRoom(code, resume); }
 
 function joinRoom(code, resume = false) {
   if (activeConn) { activeConn.close(); activeConn = null; }
@@ -383,10 +385,16 @@ class FriendGame {
         fresh = (apiState.config?.achievements || []).filter(a => now.has(a.id) && !this.startAch.has(a.id));
       } catch {}
     }
+    const tour = st.meta?.tournament || null;
+    const backToTour = { label: '🏆 Вернуться к турниру', cls: 'green', onClick: async () => {
+      this.conn.close();
+      const { openTournament } = await import('./tourney.js');
+      openTournament(tour);
+    } };
     gameResultModal({
       emoji, title, sub: REASONS[st.reason] || '', ratingDelta, achievements: fresh,
       buttons: [
-        { label: '🔄 Реванш (смена цвета)', cls: 'green', onClick: () => { this.conn.send({ t: 'rematch' }); toast('Предложение реванша отправлено'); } },
+        tour ? backToTour : { label: '🔄 Реванш (смена цвета)', cls: 'green', onClick: () => { this.conn.send({ t: 'rematch' }); toast('Предложение реванша отправлено'); } },
         { label: '📊 Разбор партии', cls: 'primary', onClick: async () => {
           await maybeShowAd();
           const { openAnalysisFlow } = await import('./analysis.js');

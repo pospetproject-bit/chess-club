@@ -6,6 +6,7 @@ import { askAnalysis } from './ai.js';
 import { el, esc, toast, modal, store } from './util.js';
 import { state, has, isPremium, api, purchase, priceOf } from './api.js';
 import { sound } from './sound.js';
+import { explainMove, explainEnd, summarize } from './explain.js';
 
 const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 const CLS = {
@@ -21,10 +22,14 @@ const CLS = {
 const BOOK = new Set(['e2e4', 'd2d4', 'g1f3', 'c2c4', 'e7e5', 'c7c5', 'e7e6', 'd7d5', 'g8f6', 'b8c6', 'f1c4', 'f1b5', 'f8c5', 'f8b4', 'c7c6', 'd7d6', 'e2e3', 'd2d3']);
 
 const winPct = cp => 50 + 50 * (2 / (1 + Math.exp(-0.00368208 * Math.max(-1000, Math.min(1000, cp)))) - 1);
-const fmtEval = s => Math.abs(s) > 9000 ? (s > 0 ? 'M' : '-M') : (s / 100).toFixed(1);
+const fmtEval = s => {
+  if (Math.abs(s) >= 9990) return '#';                       // мат уже на доске
+  if (Math.abs(s) > 9000) return (s > 0 ? '+M' : '−M') + Math.max(1, Math.ceil((10000 - Math.abs(s)) / 2));
+  return (s > 0 ? '+' : '') + (s / 100).toFixed(1);
+};
 
 // Вход: проверка доступа → покупка → запуск анализа
-export async function openAnalysisFlow({ pgn, gameId = null, playerColor = 'w', title = 'Разбор партии' }) {
+export async function openAnalysisFlow({ pgn, gameId = null, playerColor = 'w', title = 'Разбор партии', free = false }) {
   // игра уже разблокирована?
   let unlocked = false;
   if (gameId) {
@@ -33,6 +38,11 @@ export async function openAnalysisFlow({ pgn, gameId = null, playerColor = 'w', 
       const g = games.find(x => x.id === gameId);
       if (g?.analyzed) unlocked = true;
     } catch {}
+  }
+  if (!unlocked && free) {
+    // бесплатные разборы (партии с ботом / вдвоём рядом) — просто помечаем на сервере
+    if (gameId) { try { await api.unlockAnalysis(gameId); } catch {} }
+    unlocked = true;
   }
   if (!unlocked) {
     if (has('analysis')) {
@@ -45,14 +55,15 @@ export async function openAnalysisFlow({ pgn, gameId = null, playerColor = 'w', 
         } catch { unlocked = isPremium(); }
       } else unlocked = isPremium(); // локальная игра без сервера — только премиум
     }
-    if (!unlocked) { offerAnalysisPurchase({ pgn, gameId, playerColor, title }); return; }
+    if (!unlocked) { offerAnalysisPurchase({ pgn, gameId, playerColor, title, free }); return; }
   }
-  runAnalysis({ pgn, gameId, playerColor, title });
+  runAnalysis({ pgn, gameId, playerColor, title, free });
 }
 
 function offerAnalysisPurchase(ctx) {
   const m = modal(`<h3>📊 Разбор партии</h3>
-    <p class="muted" style="line-height:1.6">Движок разберёт каждый ход: график оценки, точность обеих сторон, зевки и ошибки, лучшие ходы со стрелками.</p>
+    <p class="muted" style="line-height:1.6">Движок объяснит каждый ход: где ошибка и почему, что было лучше, почему случился мат или пат.</p>
+    <p class="muted" style="line-height:1.6;font-size:12px">💡 Партии <b>с ботом</b> и «вдвоём рядом» разбираются <b>бесплатно</b>. Платный разбор — только для партий с друзьями.</p>
     <div style="display:flex;flex-direction:column;gap:8px;margin-top:12px">
       <button class="btn block" data-a="one">Разобрать эту партию — ${priceOf('analysis_1')} ⭐</button>
       <button class="btn block" data-a="ten">Пакет 10 разборов — ${priceOf('analysis_10')} ⭐ <span class="badge green">−48%</span></button>
@@ -133,8 +144,12 @@ async function runAnalysis({ pgn, gameId, playerColor, title }) {
     }
     const playedUci = m.from + m.to;
     const bestUci = before.best ? before.best.from + before.best.to : null;
+    const allowsMate = scoreAfterMover < -9000 && scoreBefore > -9000;   // подставил мат
+    const missedMate = scoreBefore > 9000 && scoreAfterMover < 9000;      // упустил мат
     let cls;
-    if (i < 8 && BOOK.has(playedUci)) cls = 'book';
+    if (allowsMate) cls = 'blunder';
+    else if (missedMate) cls = 'mistake';
+    else if (i < 8 && BOOK.has(playedUci) && loss <= 40) cls = 'book';
     else if (bestUci === playedUci) cls = 'best';
     else if (loss <= 25) cls = 'good';
     else if (loss <= 60) cls = 'inaccuracy';
@@ -145,6 +160,27 @@ async function runAnalysis({ pgn, gameId, playerColor, title }) {
     return { m, i, cls, loss, acc, mover, best: before.best, evalWhite: (after.turn === 'w' ? 1 : -1) * after.score, scoreBefore };
   });
 
+  // объяснения словами: почему ход хорош/плох, что было лучше
+  const lastFen = fens[fens.length - 1];
+  const finalChess = new Chess(lastFen);
+  const reason = finalChess.isCheckmate() ? 'checkmate'
+    : finalChess.isStalemate() ? 'stalemate'
+    : finalChess.isInsufficientMaterial() ? 'material'
+    : finalChess.isThreefoldRepetition() ? 'repetition'
+    : finalChess.isDrawByFiftyMoves() ? 'fifty' : null;
+  const resultGuess = finalChess.isCheckmate() ? (finalChess.turn() === 'w' ? 'b' : 'w') : (reason ? 'draw' : null);
+  annotated.forEach((a, i) => {
+    try {
+      a.expl = explainMove({
+        fenBefore: fens[i], fenAfter: fens[i + 1], move: a.m, best: a.best,
+        scoreBefore: a.scoreBefore, scoreAfter: (a.mover === 'w' ? 1 : -1) * a.evalWhite,
+        cls: a.cls, loss: a.loss, reply: rows[i + 1]?.best || null,
+      });
+    } catch (e) { a.expl = { title: CLS[a.cls].name, tone: a.cls, lines: [], better: null }; }
+  });
+  const endInfo = reason ? explainEnd({ fen: lastFen, reason, result: resultGuess, playerColor }) : null;
+  const summary = summarize(annotated, endInfo, playerColor);
+
   const accOf = c => {
     const list = annotated.filter(a => a.mover === c && a.cls !== 'book');
     return list.length ? Math.round(list.reduce((s, a) => s + a.acc, 0) / list.length) : 100;
@@ -153,6 +189,10 @@ async function runAnalysis({ pgn, gameId, playerColor, title }) {
 
   // ---- UI ----
   body.innerHTML = `
+    ${endInfo ? `<div class="card end-card ${endInfo.tone}">
+      <h3 style="margin:0 0 6px">${esc(endInfo.title)}</h3>
+      ${endInfo.lines.map(l => `<p class="muted" style="margin:4px 0;line-height:1.55;font-size:13px">${esc(l)}</p>`).join('')}
+    </div>` : ''}
     <div class="acc-cards">
       <div class="acc-card"><div class="acc-v">${accOf('w')}%</div><div class="acc-k">Точность белых</div></div>
       <div class="acc-card"><div class="acc-v">${accOf('b')}%</div><div class="acc-k">Точность чёрных</div></div>
@@ -176,7 +216,15 @@ async function runAnalysis({ pgn, gameId, playerColor, title }) {
       <button class="btn sm" id="nav-last">⏭</button>
       <button class="btn sm" id="copy-pgn">📋 PGN</button>
     </div>
-    <p class="muted" id="an-hint" style="text-align:center;min-height:18px"></p>
+    <div class="card explain-card" id="an-explain"></div>
+    ${summary.moments.length ? `<div class="card">
+      <h3 style="margin:0 0 8px">🔍 Ключевые моменты</h3>
+      <div id="an-moments"></div>
+    </div>` : ''}
+    <div class="card">
+      <h3 style="margin:0 0 8px">🎯 Над чем поработать</h3>
+      ${summary.tips.map(t => `<p class="muted" style="margin:6px 0;line-height:1.55;font-size:13px">• ${esc(t)}</p>`).join('')}
+    </div>
     <div class="card" style="padding:8px" id="an-moves"></div>`;
 
   const board = new BoardView(body.querySelector('#an-board'), { interactive: false, orientation: playerColor });
@@ -217,11 +265,28 @@ async function runAnalysis({ pgn, gameId, playerColor, title }) {
     cursor.setAttribute('x1', nav.idx * 10 + 5); cursor.setAttribute('x2', nav.idx * 10 + 5);
     movesBox.querySelectorAll('.mv-row').forEach((r, i) => r.classList.toggle('current', i === nav.idx));
     movesBox.querySelectorAll('.mv-row')[nav.idx]?.scrollIntoView({ block: 'nearest' });
-    const hint = body.querySelector('#an-hint');
-    if (a.cls === 'best') hint.innerHTML = `<span style="color:${CLS.best.color}">★ Лучший ход!</span>`;
-    else if (a.cls === 'book') hint.textContent = '📖 Теоретический ход';
-    else if (a.best) hint.innerHTML = `<span style="color:${CLS[a.cls].color}">${CLS[a.cls].icon} ${CLS[a.cls].name}</span> · лучше было <b>${esc(a.best.san)}</b> (стрелка)`;
-    else hint.textContent = '';
+    const ex = body.querySelector('#an-explain');
+    const e = a.expl || { title: CLS[a.cls].name, lines: [], better: null };
+    const num = (a.i % 2 === 0 ? (a.i / 2 + 1) + '. ' : (a.i / 2 + 0.5 | 0) + '… ');
+    ex.className = 'card explain-card ' + (e.tone || a.cls);
+    ex.innerHTML = `
+      <div class="ex-head">
+        <span class="ex-badge" style="color:${CLS[a.cls].color}">${CLS[a.cls].icon} ${esc(String(e.title).replace(/^[★✓?!📖]+\s*/, ""))}</span>
+        <b class="ex-move">${num}${esc(a.m.san)}</b>
+        <span class="ex-eval muted">${fmtEval(a.scoreBefore)} → ${fmtEval((a.mover === 'w' ? 1 : -1) * a.evalWhite)}</span>
+      </div>
+      ${(e.lines || []).map(l => `<p class="ex-line">${esc(l)}</p>`).join('')}
+      ${e.better ? `<div class="ex-better"><b>Лучше было ${esc(e.better.san)}</b> ${a.cls !== 'best' ? '<span class="muted">(зелёная стрелка на доске)</span>' : ''}
+        ${(e.better.lines || []).map(l => `<p class="ex-line">${esc(l)}</p>`).join('')}</div>` : ''}`;
+  }
+  const momentsBox = body.querySelector('#an-moments');
+  if (momentsBox) {
+    summary.moments.forEach(mo => {
+      const row = el('div', 'moment ' + mo.tone);
+      row.innerHTML = `<span class="mo-dot"></span><span>${esc(mo.text)}</span>`;
+      row.onclick = () => { nav.idx = mo.i; show(); sound.click(); body.querySelector('#an-board').scrollIntoView({ block: 'center', behavior: 'smooth' }); };
+      momentsBox.appendChild(row);
+    });
   }
   body.querySelector('#nav-first').onclick = () => { nav.idx = 0; show(); };
   body.querySelector('#nav-prev').onclick = () => { nav.idx = Math.max(0, nav.idx - 1); show(); };

@@ -168,6 +168,20 @@ export function inviteLink(code, config) {
   return `${location.origin}${location.pathname}#join=${code}`;
 }
 
+export function tourLink(id, config) {
+  if (config?.botUsername && config?.appShortName)
+    return `https://t.me/${config.botUsername}/${config.appShortName}?startapp=tour_${id}`;
+  return `${location.origin}${location.pathname}#tour=${id}`;
+}
+
+export function shareTour(id, name, config) {
+  const link = tourLink(id, config);
+  const text = `🏆 Приглашаю на турнир «${name}» в «Шахматном Клубе»! Код: ${id}`;
+  const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(text)}`;
+  if (tg?.openTelegramLink) tg.openTelegramLink(shareUrl);
+  else window.open(shareUrl, '_blank');
+}
+
 export function shareInvite(code, config) {
   const link = inviteLink(code, config);
   const text = `⚔️ Сыграем в шахматы? Я жду тебя в комнате ${code} в «Шахматном Клубе»!`;

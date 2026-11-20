@@ -12,6 +12,7 @@ import { verifyInitData, createStarsInvoice, BOT_TOKEN, DEMO_MODE } from './tele
 import { getAvatar, checkAvatarSig, fallbackAvatar, isSafePhotoUrl, invalidateAvatar } from './avatars.js';
 import { startBot } from './bot.js';
 import { RoomManager } from './rooms.js';
+import { TournamentManager } from './tournaments.js';
 
 await db.initDb();
 
@@ -143,6 +144,9 @@ app.post('/api/analysis/unlock', (req, res) => {
   res.json({ ...r, user: db.publicUser(req.user) });
 });
 
+// Турниры: список моих (создать/играть — по WebSocket)
+app.get('/api/tournaments', (req, res) => res.json({ items: tours.summaries(req.user.id) }));
+
 app.get('/healthz', (req, res) => res.send('ok'));
 
 // --- статика мини-аппа ---
@@ -153,7 +157,9 @@ const server = http.createServer(app);
 
 // --- WebSocket комнаты ---
 const wss = new WebSocketServer({ server, path: '/ws' });
-const rooms = new RoomManager(({ pgn, result, reason, rated, players }) => {
+let tours = null;
+const rooms = new RoomManager(({ code, meta, pgn, result, reason, rated, players }) => {
+  try { tours?.onRoomEnd({ code, meta, result, reason }); } catch (e) { console.error('[tours]', e); }
   // сохраняем завершённую партию обоим реальным пользователям + Elo (zero-sum)
   const uw = players.w?.id ? db.getUser(players.w.id, players.w.name) : null;
   const ub = players.b?.id ? db.getUser(players.b.id, players.b.name) : null;
@@ -170,6 +176,8 @@ const rooms = new RoomManager(({ pgn, result, reason, rated, players }) => {
     }
   }
 });
+tours = new TournamentManager(rooms);
+rooms.tournaments = tours;
 wss.on('connection', ws => rooms.attach(ws));
 setInterval(() => { wss.clients.forEach(ws => { if (!ws.isAlive) return ws.terminate(); ws.isAlive = false; ws.ping(); }); }, 30000);
 

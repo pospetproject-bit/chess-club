@@ -223,7 +223,7 @@ class BotGame {
     gameResultModal({
       emoji, title, sub: `${BOT_LEVELS[this.level].name} · ${reason}`, ratingDelta, achievements: fresh,
       buttons: [
-        { label: '📊 Разбор партии', cls: 'primary', onClick: async () => { await maybeShowAd(); const { openAnalysisFlow } = await import('./analysis.js'); openAnalysisFlow({ pgn: this.chess.pgn(), gameId: this.gameServerId, playerColor: this.color, title: 'Разбор партии с ботом' }); } },
+        { label: '📊 Разбор партии', cls: 'primary', onClick: async () => { await maybeShowAd(); const { openAnalysisFlow } = await import('./analysis.js'); openAnalysisFlow({ pgn: this.chess.pgn(), gameId: this.gameServerId, playerColor: this.color, title: 'Разбор партии с ботом', free: true }); } },
         { label: '🔄 Реванш', cls: 'green', onClick: () => startBotGame({ level: this.level, color: this.color === 'w' ? 'b' : 'w', tc: this.tcName, rated: this.rated }) },
         { label: '🏠 На главную', onClick: async () => { await maybeShowAd(); const { nav } = await import('./main.js'); nav('home'); } },
       ],

@@ -50,6 +50,7 @@ export class RoomManager {
   send(ws, m) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(m)); }
 
   handle(ws, m) {
+    if (typeof m.t === 'string' && m.t.startsWith('t_') && this.tournaments) return this.tournaments.handle(ws, m);
     switch (m.t) {
       case 'create': {
         const who = this.auth(m);
@@ -91,7 +92,8 @@ export class RoomManager {
             ws.roomCode = room.code; ws.userId = uid;
             this.send(ws, { t: 'joined', code: room.code, color: c });
             this.broadcast(room, { t: 'opponent_reconnected' });
-            this.broadcastState(room);
+            if (room.status === 'waiting' && room.players.w?.ws && room.players.b?.ws) this.start(room);
+            else this.broadcastState(room);
             return;
           }
         }
@@ -147,7 +149,7 @@ export class RoomManager {
         break;
       }
       case 'rematch': {
-        const room = this.roomOf(ws); if (!room || room.status !== 'over') return;
+        const room = this.roomOf(ws); if (!room || room.status !== 'over' || room.meta?.tournament) return;
         const color = this.colorOf(ws, room);
         room.rematch.add(color);
         if (room.rematch.size === 2) {
@@ -173,6 +175,25 @@ export class RoomManager {
     }
   }
 
+  // Комната турнирной пары: оба игрока известны заранее, сокеты придут позже.
+  createMatchRoom({ w, b, tc, rated, meta }) {
+    const code = genCode();
+    const room = {
+      code, chess: new Chess(), status: 'waiting',
+      tc: TIME_CONTROLS[tc] ?? null, tcName: tc || 'none',
+      rated: rated !== false,
+      players: {
+        w: { id: String(w.id), name: String(w.name || 'Игрок').slice(0, 40), ws: null },
+        b: { id: String(b.id), name: String(b.name || 'Игрок').slice(0, 40), ws: null },
+      },
+      clocks: null, turnStart: 0, moves: [], lastMove: null,
+      result: null, resultReason: null, drawOffer: null, rematch: new Set(),
+      created: Date.now(), endedAt: 0, meta: meta || null,
+    };
+    this.rooms.set(code, room);
+    return room;
+  }
+
   start(room) {
     room.status = 'active';
     if (room.tc) { room.clocks = { w: room.tc.base, b: room.tc.base }; room.turnStart = Date.now(); }
@@ -195,6 +216,7 @@ export class RoomManager {
     this.broadcastState(room);
     try {
       this.onGameEnd({
+        code: room.code, meta: room.meta || null,
         pgn: room.chess.pgn(), result, reason, rated: room.rated,
         players: { w: { id: room.players.w?.id, name: room.players.w?.name }, b: { id: room.players.b?.id, name: room.players.b?.name } },
       });
@@ -205,6 +227,7 @@ export class RoomManager {
     const now = Date.now();
     for (const room of this.rooms.values()) {
       if (room.status === 'waiting') {
+        if (room.meta?.tournament) continue; // ждём игроков сколько нужно (следит турнирный менеджер)
         const owner = room.players.w || room.players.b;
         if (owner?.disconnectedAt && now - owner.disconnectedAt > 180000) this.rooms.delete(room.code);
         continue;
@@ -234,6 +257,7 @@ export class RoomManager {
     if (p.ws !== ws) return;
     p.ws = null;
     if (room.status === 'waiting') {
+      if (room.meta?.tournament) return; // вышел из экрана — место в сетке сохраняется
       if (explicit) { this.rooms.delete(room.code); return; }
       p.disconnectedAt = Date.now(); // создатель вылетел — комната живёт ещё 3 минуты
       return;
@@ -266,7 +290,7 @@ export class RoomManager {
         w: room.players.w && { name: room.players.w.name, avatar: avatarUrl(room.players.w.id), online: !!room.players.w.ws },
         b: room.players.b && { name: room.players.b.name, avatar: avatarUrl(room.players.b.id), online: !!room.players.b.ws },
       },
-      result: room.result, reason: room.resultReason,
+      result: room.result, reason: room.resultReason, meta: room.meta || null,
       drawOffer: room.drawOffer, rematch: [...room.rematch],
       legal: room.status === 'active' && c.turn() === color ? c.moves({ verbose: true }).map(m => ({ from: m.from, to: m.to, promotion: m.promotion })) : [],
     };
@@ -283,6 +307,7 @@ export class RoomManager {
   cleanup() {
     const now = Date.now();
     for (const [code, r] of this.rooms) {
+      if (r.meta?.tournament) { if (now - r.created > 6 * 3600000) this.rooms.delete(code); continue; }
       if (r.status === 'over' && now - r.endedAt > 600000) { this.rooms.delete(code); continue; }
       if (now - r.created > 3600000) { this.rooms.delete(code); continue; }
       const anyWs = r.players.w?.ws || r.players.b?.ws;

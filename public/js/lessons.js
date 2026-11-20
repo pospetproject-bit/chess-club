@@ -14,26 +14,86 @@ export { PACKS, LESSONS };
 const done = () => store.get('lessons_done', []);
 
 // ---------- экран списка курсов ----------
+const GROUPS = [
+  { id: 'all', title: 'Все' },
+  { id: 'base', title: 'Основы' },
+  { id: 'openings', title: 'Дебюты' },
+  { id: 'tactics', title: 'Тактика' },
+  { id: 'endgame', title: 'Эндшпиль' },
+  { id: 'practice', title: 'Мастерство' },
+];
+let learnGroup = 'all';
+
 export function renderLearn() {
   const root = document.getElementById('learn-list');
   root.innerHTML = '';
+  const d = done();
+  const total = LESSONS.length;
+  const passed = LESSONS.filter(l => d.includes(l.id)).length;
+  const paidPacks = PACKS.filter(p => !p.free);
+  const ownedAll = isPremium() || paidPacks.every(p => has('lessons:' + p.id));
+
+  // сводка прогресса
+  const head = el('div', 'card learn-head');
+  head.innerHTML = `
+    <div class="lh-row"><b>${passed}</b><span class="muted">из ${total} уроков пройдено</span>
+      <span class="grow"></span><span class="muted">${PACKS.length} курсов</span></div>
+    <div class="bar"><i style="width:${Math.round(passed / total * 100)}%"></i></div>`;
+  root.appendChild(head);
+
+  // пакет всех курсов
+  if (!ownedAll) {
+    const bundle = window.__cc_config?.catalog.find(p => p.id === 'lessons_all');
+    const sum = paidPacks.reduce((a, p) => a + priceOf(p.product), 0);
+    const banner = el('div', 'card bundle-card');
+    banner.innerHTML = `
+      <div class="grow">
+        <h3 style="margin:0 0 4px">Все курсы навсегда</h3>
+        <p class="muted">${paidPacks.length} курсов · ${total} уроков. По одному — ${sum}⭐, пакетом — ${bundle?.stars ?? 149}⭐.</p>
+      </div>
+      <button class="btn gold sm" id="buy-all">${bundle?.stars ?? 149} ⭐</button>`;
+    banner.querySelector('#buy-all').onclick = async (e) => {
+      e.stopPropagation();
+      const ok = await purchase('lessons_all');
+      if (ok) renderLearn();
+    };
+    root.appendChild(banner);
+  }
+
+  // фильтр по разделам
+  const chips = el('div', 'chips');
+  for (const g of GROUPS) {
+    const c = el('button', 'chip' + (learnGroup === g.id ? ' on' : ''));
+    c.textContent = g.title;
+    c.onclick = () => { learnGroup = g.id; renderLearn(); };
+    chips.appendChild(c);
+  }
+  root.appendChild(chips);
+
   for (const pack of PACKS) {
+    if (learnGroup !== 'all' && pack.group !== learnGroup) continue;
     const lessons = LESSONS.filter(l => l.pack === pack.id);
-    const doneCount = lessons.filter(l => done().includes(l.id)).length;
-    const unlocked = pack.free || has('lessons:' + pack.id);
-    const card = el('div', 'card pack-card');
+    const doneCount = lessons.filter(l => d.includes(l.id)).length;
+    const unlocked = pack.free || isPremium() || has('lessons:' + pack.id);
+    const card = el('div', 'card pack-card' + (unlocked ? '' : ' locked'));
     card.innerHTML = `
       <div class="p-ico">${pack.ico}</div>
       <div class="grow">
-        <h3 style="margin:0">${pack.title} ${unlocked ? '' : '🔒'}</h3>
-        <p class="muted">${pack.desc}</p>
-        <p class="muted">${unlocked ? `Пройдено ${doneCount}/${lessons.length}` : `Открыть за ${pack.product ? priceOf(pack.product) : ''} ⭐ · входит в Премиум`}</p>
+        <h3 style="margin:0">${esc(pack.title)}</h3>
+        <p class="muted">${esc(pack.desc)}</p>
+        <div class="pack-meta">
+          <span class="muted">${lessons.length} уроков</span>
+          ${unlocked
+            ? `<span class="muted">· пройдено ${doneCount}/${lessons.length}</span>`
+            : `<span class="badge gold">${priceOf(pack.product)} ⭐</span>`}
+        </div>
+        ${unlocked ? `<div class="bar sm"><i style="width:${Math.round(doneCount / lessons.length * 100)}%"></i></div>` : ''}
       </div>
-      <div>${unlocked ? '→' : '<span class="badge gold">⭐</span>'}</div>`;
+      <div class="p-arrow">${unlocked ? '→' : '🔒'}</div>`;
     card.onclick = async () => {
       if (!unlocked) {
         const ok = await purchase(pack.product);
-        if (ok) renderLearn();
+        if (ok) renderPack(pack);
         return;
       }
       renderPack(pack);
@@ -43,20 +103,28 @@ export function renderLearn() {
 }
 
 function priceOf(productId) {
-  return window.__cc_config?.catalog.find(p => p.id === productId)?.stars ?? '?';
+  return window.__cc_config?.catalog.find(p => p.id === productId)?.stars ?? 19;
 }
 
 function renderPack(pack) {
   const root = document.getElementById('learn-list');
-  root.innerHTML = `<div class="back-row"><button class="btn sm" id="pack-back">← Курсы</button><h2>${pack.ico} ${pack.title}</h2></div>`;
+  const lessons = LESSONS.filter(x => x.pack === pack.id);
+  const d = done();
+  const doneCount = lessons.filter(l => d.includes(l.id)).length;
+  root.innerHTML = `<div class="back-row"><button class="btn sm" id="pack-back">← Курсы</button><h2>${pack.ico} ${esc(pack.title)}</h2></div>
+    <div class="card learn-head"><div class="lh-row"><b>${doneCount}</b><span class="muted">из ${lessons.length} уроков</span></div>
+    <div class="bar"><i style="width:${Math.round(doneCount / lessons.length * 100)}%"></i></div>
+    <p class="muted" style="margin:8px 0 0">${esc(pack.desc)}</p></div>`;
   root.querySelector('#pack-back').onclick = renderLearn;
-  for (const l of LESSONS.filter(x => x.pack === pack.id)) {
+  lessons.forEach((l, i) => {
     const item = el('div', 'lesson-item');
-    const isDone = done().includes(l.id);
-    item.innerHTML = `<span style="font-size:20px">${isDone ? '✅' : '📖'}</span><div class="grow"><b>${esc(l.title)}</b><div class="muted">${l.steps.length} шагов</div></div><span>${isDone ? '<span class="done">пройден</span>' : '→'}</span>`;
+    const isDone = d.includes(l.id);
+    item.innerHTML = `<span class="li-num${isDone ? ' done' : ''}">${isDone ? '✓' : i + 1}</span>
+      <div class="grow"><b>${esc(l.title)}</b><div class="muted">${l.steps.filter(s => s.expect).length} ходов · ${l.steps.length} шагов</div></div>
+      <span>${isDone ? '<span class="done">пройден</span>' : '→'}</span>`;
     item.onclick = () => startLesson(l);
     root.appendChild(item);
-  }
+  });
 }
 
 // ---------- плеер урока ----------
@@ -132,7 +200,14 @@ export function startLesson(lesson) {
     board.rememberHL({ last: hist.length ? [hist[hist.length - 1].from, hist[hist.length - 1].to] : null, check: chess.inCheck() ? kingSquare(chess, chess.turn()) : null, hl: st.hl || [] });
     root.querySelector('#ls-text').innerHTML = esc(st.text);
     const dots = root.querySelector('#ls-dots');
-    dots.innerHTML = lesson.steps.map((_, i) => `<i class="${i < idx ? 'done' : i === idx ? 'on' : ''}"></i>`).join('');
+    if (lesson.steps.length > 16) {
+      dots.className = 'lesson-progress';
+      dots.innerHTML = `<span class="muted">Шаг ${Math.min(idx + 1, lesson.steps.length)} из ${lesson.steps.length}</span>
+        <div class="bar sm"><i style="width:${Math.round(idx / lesson.steps.length * 100)}%"></i></div>`;
+    } else {
+      dots.className = 'progress-dots';
+      dots.innerHTML = lesson.steps.map((_, i) => `<i class="${i < idx ? 'done' : i === idx ? 'on' : ''}"></i>`).join('');
+    }
     const nextBtn = root.querySelector('#ls-next');
     nextBtn.style.display = st.expect ? 'none' : '';
     nextBtn.onclick = () => { sound.click(); advance(); };

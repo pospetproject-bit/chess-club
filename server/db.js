@@ -13,7 +13,7 @@ const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'data
 const FILE = path.join(ROOT, 'db.json');
 const DATABASE_URL = process.env.DATABASE_URL || '';
 
-let db = { users: {}, games: {}, purchases: [] };
+let db = { users: {}, games: {}, purchases: [], tournaments: {} };
 let pool = null;
 
 export async function initDb() {
@@ -242,6 +242,8 @@ export const getGame = id => db.games[id];
 export function unlockAnalysis(u, gameId) {
   const g = db.games[gameId];
   if (!g || g.user !== u.id) return { ok: false, error: 'game not found' };
+  // Обучение бесплатное: партии с ботом и «вдвоём рядом» разбираются без кредитов.
+  if (g.mode === 'bot' || g.mode === 'local') { g.analyzed = true; save(); return { ok: true, game: g, free: true }; }
   if (g.analyzed || isPremium(u)) { g.analyzed = true; save(); return { ok: true, game: g }; }
   if (u.analysis_credits <= 0) return { ok: false, error: 'no credits' };
   u.analysis_credits--; g.analyzed = true; save();
@@ -262,3 +264,19 @@ export function publicUser(u) {
     puzzles_solved: u.puzzles_solved || 0, lessons_done: u.lessons_done || 0,
   };
 }
+
+// ── Турниры ──────────────────────────────────────────────────────────
+export function putTournament(t) {
+  db.tournaments ||= {};
+  db.tournaments[t.id] = t;
+  // история ограничена: 60 последних турниров
+  const keys = Object.keys(db.tournaments);
+  if (keys.length > 60) {
+    const old = keys.map(k => db.tournaments[k]).sort((a, b) => a.created - b.created).slice(0, keys.length - 60);
+    for (const o of old) delete db.tournaments[o.id];
+  }
+  save();
+  return t;
+}
+export function getTournament(id) { return db.tournaments?.[String(id || '').toUpperCase()] || null; }
+export function allTournaments() { return Object.values(db.tournaments || {}); }
