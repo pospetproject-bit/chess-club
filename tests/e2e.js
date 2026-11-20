@@ -28,6 +28,15 @@ const text = (p, sel) => p.$eval(sel, n => n.textContent).catch(() => '');
 console.log('— Главная —');
 ok(await visible(page, '#btn-bot'), 'главная отрендерилась, кнопка «С ботом» видна');
 ok((await page.$$('#screen-home .mode-card')).length === 5, '5 режимов на главной (включая турнир)');
+const homeOrder = await page.$$eval('#screen-home .mode-grid .mode-card', ns => ns.map(n => n.id));
+ok(homeOrder.join(',') === 'btn-bot,btn-friend,btn-local,btn-learn-home', 'порядок сетки: бот, друг, вдвоём рядом, обучение');
+ok(await page.evaluate(() => {
+  const grid = document.querySelector('#screen-home .mode-grid');
+  const t = document.getElementById('btn-tourney');
+  const tip = document.getElementById('tip-card');
+  return !grid.contains(t) && (grid.compareDocumentPosition(t) & Node.DOCUMENT_POSITION_FOLLOWING) &&
+    (t.compareDocumentPosition(tip) & Node.DOCUMENT_POSITION_FOLLOWING);
+}), '«Турнир» — под сеткой режимов и над советом дня');
 ok(await visible(page, '#daily-card .daily-card'), 'карточка задачи дня');
 
 console.log('— Партия с ботом —');

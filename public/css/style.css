@@ -544,3 +544,9 @@ input[type=text]:focus { border-color: var(--accent); }
 .store-grid { align-items: stretch; }
 .store-card { display: flex; flex-direction: column; }
 .store-card .btn { margin-top: auto; }
+
+/* Главная: «Турнир» — широкая кнопка под сеткой режимов, над советом дня */
+.mode-wide { margin: -2px 0 14px; }
+.mode-wide .mode-card { width: 100%; }
+.mode-card.wide .mode-texts { display: flex; flex-direction: column; flex: 1; }
+.mode-card.wide .mode-go { color: var(--muted); font-size: 18px; }
