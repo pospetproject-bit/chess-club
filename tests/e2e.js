@@ -13,8 +13,9 @@ const browser = await puppeteer.launch({ headless: 'shell', args: ['--no-sandbox
 async function newPage(errors) {
   const p = await browser.newPage();
   await p.setViewport({ width: 420, height: 860 });
+  const external = /mc\.yandex\.ru|metrika|telegram\.org/i; // внешние скрипты могут быть недоступны в песочнице
   p.on('pageerror', e => errors.push('pageerror: ' + e.message));
-  p.on('console', m => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
+  p.on('console', m => { if (m.type() === 'error' && !external.test(m.text())) errors.push('console: ' + m.text()); });
   return p;
 }
 const errors = [];
@@ -44,6 +45,22 @@ const gapHome = await page.evaluate(() => {
 });
 ok(gapHome >= 12, `«Совет дня» не наползает на «Турнир» (зазор ${gapHome}px)`);
 ok(await visible(page, '#daily-card .daily-card'), 'карточка задачи дня');
+
+console.log('— Аналитика —');
+const homeHtml = await (await fetch(BASE)).text();
+ok(homeHtml.includes('metrika/tag.js?id=114397828'), 'счётчик Метрики 114397828 отдаётся в HTML');
+ok(await page.evaluate(() => typeof window.ym === 'function'), 'ym доступен (на localhost — заглушка, тесты не портят статистику)');
+await page.evaluate(() => {
+  window.__ymCalls = [];
+  const orig = window.ym;
+  window.ym = (...a) => { window.__ymCalls.push(a); return orig.apply(null, a); };
+});
+await page.evaluate(() => document.querySelector('#tabbar [data-tab="learn"]').click());
+await sleep(500);
+const ymCalls = await page.evaluate(() => window.__ymCalls);
+ok(ymCalls.some(c => c[1] === 'hit' && String(c[2]).endsWith('#/learn')), 'переход на «Уроки» отправлен как просмотр экрана');
+await page.evaluate(() => document.querySelector('#tabbar [data-tab="home"]').click());
+await sleep(400);
 
 console.log('— Партия с ботом —');
 await page.click('#btn-bot');

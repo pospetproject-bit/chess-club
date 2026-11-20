@@ -8,6 +8,7 @@ import { adOutcome } from '../public/js/ads-result.js';
 import { explainMove, explainMate, explainStalemate, explainEnd, summarize } from '../public/js/explain.js';
 import { seedOrder, makeBracket, nextSlot, roundTitle, byeWinner, matchPlayable } from '../server/tournaments.js';
 import { spawn } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import WebSocket from 'ws';
 
 let pass = 0, fail = 0;
@@ -222,6 +223,29 @@ ok(seedOrder(16).length === 16 && seedOrder(16)[0] === 1 && seedOrder(16)[1] ===
   // двое в сетке на 4: оба получают проход и встречаются сразу в финале
   const b = makeBracket([{ id: 'a', rating: 1500 }, { id: 'b', rating: 1400 }], 4);
   ok(b[0][0].a.id === 'a' && !b[0][0].b && b[0][1].a.id === 'b' && !b[0][1].b, 'двое в сетке на 4 — оба с проходом в финал');
+}
+
+console.log('— Аналитика: Яндекс.Метрика —');
+{
+  const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
+  ok(html.includes('mc.yandex.ru/metrika/tag.js?id=114397828'), 'счётчик Метрики 114397828 подключён');
+  ok(/ym\(114397828,\s*'init'/.test(html), 'счётчик инициализируется');
+  ok(html.includes('webvisor:true') && html.includes('clickmap:true') && html.includes('accurateTrackBounce:true'),
+    'вебвизор, карта кликов и точный отказ включены');
+  ok(html.includes('mc.yandex.ru/watch/114397828'), 'noscript-пиксель на месте');
+  ok(html.indexOf('metrika/tag.js') < html.indexOf('telegram-web-app.js'), 'счётчикгрузится раньше остальных скриптов');
+  const { METRIKA_ID, hit, goal } = await import('../public/js/metrics.js');
+  ok(METRIKA_ID === 114397828, 'id в коде приложения совпадает со счётчиком');
+  const calls = [];
+  globalThis.window = { ym: (...a) => calls.push(a) };
+  globalThis.location = { pathname: '/' };
+  hit('learn'); goal('purchase', { sku: 'premium_30d' });
+  ok(calls.length === 2 && calls[0][0] === 114397828 && calls[0][1] === 'hit' && calls[0][2] === '/#/learn',
+    'переходы экранов уходят как виртуальные страницы');
+  ok(calls[1][1] === 'reachGoal' && calls[1][2] === 'purchase', 'покупка уходит как цель purchase');
+  delete globalThis.window; delete globalThis.location;
+  hit('home'); goal('game_bot');
+  ok(true, 'если счётчик не загрузился — аналитика молча пропускается, приложение работает');
 }
 
 console.log('— Сервер: API + WebSocket —');

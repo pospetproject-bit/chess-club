@@ -12,9 +12,11 @@ import { openAnalysisFlow } from './analysis.js';
 import { renderRating } from './rating.js';
 import { renderAchievementsGrid } from './achievements.js';
 import { openTourneyLobby, openTournament, renderTourneyBanner, closeTourneyConn } from './tourney.js';
+import { hit, goal } from './metrics.js';
 
 const MAIN_SCREENS = ['home', 'learn', 'puzzles', 'rating', 'store', 'profile'];
 let currentScreen = 'home';
+let firstShow = true;
 
 export function show(name) {
   $$('.screen').forEach(s => s.classList.remove('active'));
@@ -22,6 +24,8 @@ export function show(name) {
   $('#tabbar').classList.toggle('hidden', !MAIN_SCREENS.includes(name));
   currentScreen = name;
   window.scrollTo(0, 0);
+  // Метрика: первый экран уже посчитан счётчиком, дальше шлём просмотры сами
+  if (firstShow) firstShow = false; else hit(name);
 }
 
 export function nav(tab) {
@@ -131,6 +135,7 @@ function botSetup() {
     store.set('last_level', level); store.set('last_color', color); store.set('last_tc', tc); store.set('last_rated', rated);
     m.close();
     const g = startBotGame({ level, color, tc, rated });
+    goal('game_bot', { level, tc, rated });
     show('game');
     backButton(true, () => { g.pause(); nav('home'); });
   };
@@ -243,13 +248,13 @@ async function boot() {
   $$('#tabbar .tab').forEach(b => b.onclick = () => { sound.click(); nav(b.dataset.tab); });
   $('#btn-bot').onclick = botSetup;
   $('#btn-friend').onclick = () => { openFriendLobby(); show('room'); };
-  $('#btn-local').onclick = () => { startLocalGame(); show('game'); };
+  $('#btn-local').onclick = () => { startLocalGame(); goal('game_local'); show('game'); };
   $('#btn-learn-home').onclick = () => nav('learn');
-  $('#btn-tourney').onclick = () => { openTourneyLobby(); };
+  $('#btn-tourney').onclick = () => { goal('tourney_open'); openTourneyLobby(); };
   // широкая карточка — div (кнопка с flex ломает высоту в iOS/Telegram WebView),
   // поэтому клавиатурную активацию добавляем вручную
   $('#btn-tourney').onkeydown = e => {
-    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openTourneyLobby(); }
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goal('tourney_open'); openTourneyLobby(); }
   };
   let connected = false;
   for (let attempt = 1; attempt <= 5 && !connected; attempt++) {

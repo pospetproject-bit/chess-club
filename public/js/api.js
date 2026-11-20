@@ -1,6 +1,7 @@
 // API-клиент: идентификация (Telegram initData или демо-id), покупки, энтайтлменты.
 import { initData, inTelegram, tgUser, tgPhotoUrl, openInvoice, userName, haptic } from './tg.js';
 import { store, toast, modal, confirmModal, sleep } from './util.js';
+import { goal } from './metrics.js';
 
 let demoId = store.get('demo_id');
 if (!demoId) { demoId = Math.random().toString(36).slice(2, 12); store.set('demo_id', demoId); }
@@ -54,7 +55,7 @@ export const noAds = () => has('no_ads');
 export const priceOf = id => state.config?.catalog.find(p => p.id === id)?.stars ?? '?';
 
 // Покупка: в Telegram — реальный Stars-инвойс, в демо — тестовое подтверждение.
-export async function purchase(productId) {
+async function purchaseInner(productId) {
   const p = state.config.catalog.find(x => x.id === productId);
   if (!p) return false;
   if (inTelegram && !state.config.demoMode) {
@@ -84,6 +85,16 @@ export async function purchase(productId) {
     toast(`✅ «${p.title}» активирован (демо)`, 'ok'); haptic('success');
     return true;
   } catch (e) { toast(e.message, 'err'); return false; }
+}
+
+// успешная покупка — одна цель в Метрике для всех товаров (магазин, курсы, задачи, подсказки)
+export async function purchase(productId) {
+  const ok = await purchaseInner(productId);
+  if (ok) {
+    const p = state.config?.catalog?.find(x => x.id === productId);
+    goal('purchase', { sku: productId, stars: p?.stars || 0 });
+  }
+  return ok;
 }
 
 function ownsProduct(p) {
